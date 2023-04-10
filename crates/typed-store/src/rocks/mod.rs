@@ -48,6 +48,9 @@ const DEFAULT_DB_WRITE_BUFFER_SIZE: usize = 1024;
 const ENV_VAR_DB_WAL_SIZE: &str = "MYSTEN_DB_WAL_SIZE_MB";
 const DEFAULT_DB_WAL_SIZE: usize = 1024;
 
+const ENV_VAR_L0_NUM_FILES_COMPACTION_TRIGGER: &str = "L0_NUM_FILES_COMPACTION_TRIGGER";
+const ENV_VAR_MAX_BACKGROUND_JOBS: &str = "MAX_BACKGROUND_JOBS";
+
 #[cfg(test)]
 mod tests;
 
@@ -100,7 +103,7 @@ macro_rules! reopen {
     };
 }
 
-/// Repeatedly attempt an OptimisiticTransaction until it succeeds.
+/// Repeatedly attempt an Optimistic Transaction until it succeeds.
 /// Since many callsites (e.g. the consensus handler) cannot proceed in the case of failed writes,
 /// this will loop forever until the transaction succeeds.
 #[macro_export]
@@ -1813,12 +1816,9 @@ pub fn base_db_options() -> DBOptions {
         opt.set_max_open_files((limit / 8) as i32);
     }
 
-    let row_cache = rocksdb::Cache::new_lru_cache(300_000).expect("Cache is ok");
-    opt.set_row_cache(&row_cache);
-
     // The table cache is locked for updates and this determines the number
     // of shards, ie 2^6. Increase in case of lock contentions.
-    opt.set_table_cache_num_shard_bits(6);
+    opt.set_table_cache_num_shard_bits(10);
 
     opt.set_min_level_to_compress(2);
     opt.set_compression_type(rocksdb::DBCompressionType::Lz4);
@@ -1897,7 +1897,12 @@ pub fn optimized_for_high_throughput_options(
     db_options.options.set_max_write_buffer_number(6);
     db_options
         .options
-        .set_level_zero_file_num_compaction_trigger(2);
+        .set_level_zero_file_num_compaction_trigger(
+            read_size_from_env(ENV_VAR_L0_NUM_FILES_COMPACTION_TRIGGER)
+                .unwrap_or(4)
+                .try_into()
+                .unwrap(),
+        );
     db_options
         .options
         .set_target_file_size_base(64 * 1024 * 1024);
@@ -1905,7 +1910,12 @@ pub fn optimized_for_high_throughput_options(
         .options
         .set_max_bytes_for_level_base(512 * 1024 * 1024);
 
-    db_options.options.set_max_background_jobs(4);
+    db_options.options.set_max_background_jobs(
+        read_size_from_env(ENV_VAR_MAX_BACKGROUND_JOBS)
+            .unwrap_or(2)
+            .try_into()
+            .unwrap(),
+    );
 
     if optimize_for_point_lookup {
         db_options

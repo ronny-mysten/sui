@@ -16,20 +16,19 @@ use sui_core::authority::AuthorityState;
 use sui_core::authority_client::NetworkAuthorityClient;
 use sui_core::transaction_orchestrator::TransactiondOrchestrator;
 use sui_json_rpc_types::{
-    BigInt, DevInspectResults, DryRunTransactionBlockResponse, SuiTransactionBlock,
-    SuiTransactionBlockData, SuiTransactionBlockEvents, SuiTransactionBlockResponse,
-    SuiTransactionBlockResponseOptions,
+    DevInspectResults, DryRunTransactionBlockResponse, SuiTransactionBlock,
+    SuiTransactionBlockEvents, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
 };
 use sui_open_rpc::Module;
-use sui_types::base_types::{EpochId, SuiAddress};
+use sui_types::base_types::SuiAddress;
 use sui_types::messages::{
     ExecuteTransactionRequest, ExecuteTransactionRequestType, TransactionEffectsAPI,
     TransactionKind,
 };
-
 use sui_types::messages::{ExecuteTransactionResponse, Transaction};
 use sui_types::messages::{TransactionData, TransactionDataAPI};
 use sui_types::signature::GenericSignature;
+use sui_types::sui_serde::BigInt;
 
 use crate::api::WriteApiServer;
 use crate::error::Error;
@@ -74,20 +73,28 @@ impl TransactionExecutionApi {
         };
         let tx_data: TransactionData = bcs::from_bytes(&tx_bytes.to_vec()?)?;
         let sender = tx_data.sender();
+        let input_objs = tx_data.input_objects().unwrap_or_default();
 
         let mut sigs = Vec::new();
         for sig in signatures {
             sigs.push(GenericSignature::from_bytes(&sig.to_vec()?)?);
         }
-        let epoch_store = self.state.load_epoch_store_one_call_per_task();
         let txn = Transaction::from_generic_sig_data(tx_data, Intent::sui_transaction(), sigs);
-        let tx = SuiTransactionBlock::try_from(txn.data().clone(), epoch_store.module_cache())?;
+        let digest = *txn.digest();
         let raw_transaction = if opts.show_raw_input {
             bcs::to_bytes(txn.data())?
         } else {
             vec![]
         };
-        let digest = *txn.digest();
+        let transaction = if opts.show_input {
+            let epoch_store = self.state.load_epoch_store_one_call_per_task();
+            Some(SuiTransactionBlock::try_from(
+                txn.data().clone(),
+                epoch_store.module_cache(),
+            )?)
+        } else {
+            None
+        };
 
         let transaction_orchestrator = self.transaction_orchestrator.clone();
         let response = spawn_monitored_task!(transaction_orchestrator.execute_transaction_block(
@@ -118,7 +125,14 @@ impl TransactionExecutionApi {
 
                 let object_cache = ObjectProviderCache::new(self.state.clone());
                 let balance_changes = if opts.show_balance_changes {
-                    Some(get_balance_changes_from_effect(&object_cache, &effects.effects).await?)
+                    Some(
+                        get_balance_changes_from_effect(
+                            &object_cache,
+                            &effects.effects,
+                            input_objs,
+                        )
+                        .await?,
+                    )
                 } else {
                     None
                 };
@@ -139,7 +153,7 @@ impl TransactionExecutionApi {
 
                 Ok(SuiTransactionBlockResponse {
                     digest,
-                    transaction: opts.show_input.then_some(tx),
+                    transaction,
                     raw_transaction,
                     effects: opts.show_effects.then_some(effects.effects.try_into()?),
                     events,
@@ -159,22 +173,19 @@ impl TransactionExecutionApi {
         tx_bytes: Base64,
     ) -> Result<DryRunTransactionBlockResponse, Error> {
         let (txn_data, txn_digest) = get_transaction_data_and_digest(tx_bytes)?;
-        let module_cache = self
-            .state
-            .load_epoch_store_one_call_per_task()
-            .module_cache()
-            .clone();
-        let input = SuiTransactionBlockData::try_from(txn_data.clone(), &module_cache)?;
+        let input_objs = txn_data.input_objects()?;
+        let sender = txn_data.sender();
         let (resp, written_objects, transaction_effects) = self
             .state
             .dry_exec_transaction(txn_data.clone(), txn_digest)
             .await?;
         let object_cache = ObjectProviderCache::new_with_cache(self.state.clone(), written_objects);
         let balance_changes =
-            get_balance_changes_from_effect(&object_cache, &transaction_effects).await?;
+            get_balance_changes_from_effect(&object_cache, &transaction_effects, input_objs)
+                .await?;
         let object_changes = get_object_changes(
             &object_cache,
-            txn_data.sender(),
+            sender,
             transaction_effects.modified_at_versions(),
             transaction_effects.all_changed_objects(),
             transaction_effects.all_deleted(),
@@ -186,7 +197,7 @@ impl TransactionExecutionApi {
             events: resp.events,
             object_changes,
             balance_changes,
-            input,
+            input: resp.input,
         })
     }
 }
@@ -209,14 +220,14 @@ impl WriteApiServer for TransactionExecutionApi {
         &self,
         sender_address: SuiAddress,
         tx_bytes: Base64,
-        gas_price: Option<BigInt>,
-        _epoch: Option<EpochId>,
+        gas_price: Option<BigInt<u64>>,
+        _epoch: Option<BigInt<u64>>,
     ) -> RpcResult<DevInspectResults> {
         let tx_kind: TransactionKind =
             bcs::from_bytes(&tx_bytes.to_vec().map_err(|e| anyhow!(e))?).map_err(|e| anyhow!(e))?;
         Ok(self
             .state
-            .dev_inspect_transaction_block(sender_address, tx_kind, gas_price.map(<u64>::from))
+            .dev_inspect_transaction_block(sender_address, tx_kind, gas_price.map(|i| *i))
             .await?)
     }
 

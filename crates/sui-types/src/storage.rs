@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use tap::Pipe;
 
@@ -677,11 +678,27 @@ pub fn transaction_input_object_keys(tx: &SenderSignedData) -> SuiResult<Vec<Obj
 
 pub trait ObjectStore {
     fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, SuiError>;
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: VersionNumber,
+    ) -> Result<Option<Object>, SuiError>;
 }
 
 impl ObjectStore for &[Object] {
     fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, SuiError> {
         Ok(self.iter().find(|o| o.id() == *object_id).cloned())
+    }
+
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: VersionNumber,
+    ) -> Result<Option<Object>, SuiError> {
+        Ok(self
+            .iter()
+            .find(|o| o.id() == *object_id && o.version() == version)
+            .cloned())
     }
 }
 
@@ -689,10 +706,65 @@ impl ObjectStore for BTreeMap<ObjectID, (ObjectRef, Object, WriteKind)> {
     fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, SuiError> {
         Ok(self.get(object_id).map(|(_, obj, _)| obj).cloned())
     }
+
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: VersionNumber,
+    ) -> Result<Option<Object>, SuiError> {
+        Ok(self
+            .get(object_id)
+            .and_then(|(_, obj, _)| {
+                if obj.version() == version {
+                    Some(obj)
+                } else {
+                    None
+                }
+            })
+            .cloned())
+    }
+}
+
+impl ObjectStore for BTreeMap<ObjectID, Object> {
+    fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, SuiError> {
+        Ok(self.get(object_id).cloned())
+    }
+
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: VersionNumber,
+    ) -> Result<Option<Object>, SuiError> {
+        Ok(self.get(object_id).and_then(|o| {
+            if o.version() == version {
+                Some(o.clone())
+            } else {
+                None
+            }
+        }))
+    }
 }
 
 impl<T: ObjectStore> ObjectStore for Arc<T> {
     fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, SuiError> {
         self.as_ref().get_object(object_id)
+    }
+
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: VersionNumber,
+    ) -> Result<Option<Object>, SuiError> {
+        self.as_ref().get_object_by_key(object_id, version)
+    }
+}
+
+impl Display for DeleteKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeleteKind::Wrap => write!(f, "Wrap"),
+            DeleteKind::Normal => write!(f, "Normal"),
+            DeleteKind::UnwrapThenDelete => write!(f, "UnwrapThenDelete"),
+        }
     }
 }

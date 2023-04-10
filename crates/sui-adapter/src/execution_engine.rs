@@ -46,6 +46,9 @@ use sui_types::{
 
 use sui_types::temporary_store::TemporaryStore;
 
+#[cfg(msim)]
+use self::advance_epoch_result_injection::maybe_modify_result;
+
 checked_arithmetic! {
 
 #[instrument(name = "tx_execute_to_effects", level = "debug", skip_all)]
@@ -84,14 +87,55 @@ pub fn execute_transaction_to_effects<
         protocol_config,
     );
 
-    let (status, execution_result) = match execution_result {
-        Ok(results) => (ExecutionStatus::Success, Ok(results)),
-        Err(error) => {
-            let (status, command) = error.to_execution_status();
-            (ExecutionStatus::new_failure(status, command), Err(error))
-        }
+    let status = if let Err(error) = &execution_result {
+        // Elaborate errors in logs if they are unexpected or their status is terse.
+        use ExecutionErrorKind as K;
+        match error.kind() {
+            K::InvariantViolation |
+            K::VMInvariantViolation => {
+                #[skip_checked_arithmetic]
+                tracing::error!(
+                    kind = ?error.kind(),
+                    tx_digest = ?transaction_digest,
+                    "INVARIANT VIOLATION! Source: {:?}",
+                    error.source(),
+                );
+            },
+
+            K::SuiMoveVerificationError |
+            K::VMVerificationOrDeserializationError => {
+                #[skip_checked_arithmetic]
+                tracing::debug!(
+                    kind = ?error.kind(),
+                    tx_digest = ?transaction_digest,
+                    "Verification Error. Source: {:?}",
+                    error.source(),
+                );
+            }
+
+            K::PublishUpgradeMissingDependency |
+            K::PublishUpgradeDependencyDowngrade => {
+                #[skip_checked_arithmetic]
+                tracing::debug!(
+                    kind = ?error.kind(),
+                    tx_digest = ?transaction_digest,
+                    "Publish/Upgrade Error. Source: {:?}",
+                    error.source(),
+                )
+            }
+
+            _ => (),
+        };
+
+        let (status, command) = error.to_execution_status();
+        ExecutionStatus::new_failure(status, command)
+    } else {
+        ExecutionStatus::Success
     };
+
+    #[skip_checked_arithmetic]
     trace!(
+        tx_digest = ?transaction_digest,
         computation_gas_cost = gas_cost_summary.computation_cost,
         storage_gas_cost = gas_cost_summary.storage_cost,
         storage_gas_rebate = gas_cost_summary.storage_rebate,
@@ -216,8 +260,8 @@ fn execute_transaction<
 
             // This limit is only present in Version 3 and up, so use this to gate it
             if let (Some(normal_lim), Some(system_lim)) =
-                (protocol_config.max_size_written_objects(), protocol_config
-            .max_size_written_objects_system_tx()) {
+                (protocol_config.max_size_written_objects_as_option(), protocol_config
+            .max_size_written_objects_system_tx_as_option()) {
                 let written_objects_size = temporary_store.written_objects_size();
 
                 match check_limit_by_meter!(
@@ -293,6 +337,7 @@ fn execute_transaction<
                   // conservation violated. try to avoid panic by dumping all writes, charging for gas, re-checking
                   // conservation, and surfacing an aborted transaction with an invariant violation if all of that works
                   result = Err(conservation_err);
+                  temporary_store.reset(gas, &mut gas_status);
                   temporary_store.charge_gas(gas_object_id, &mut gas_status, &mut result, gas);
                   // check conservation once more more. if we still fail, it's a problem with gas
                   // charging that happens even in the "aborted" case--no other option but panic.
@@ -563,6 +608,9 @@ fn advance_epoch<S: ObjectStore + BackingPackageStore + ParentSync + ChildObject
         advance_epoch_pt,
     );
 
+    #[cfg(msim)]
+    let result = maybe_modify_result(result);
+
     if result.is_err() {
         tracing::error!(
             "Failed to execute advance epoch transaction. Switching to safe mode. Error: {:?}. Input objects: {:?}. Tx data: {:?}",
@@ -670,4 +718,31 @@ fn setup_consensus_commit<S: BackingPackageStore + ParentSync + ChildObjectResol
     )
 }
 
+}
+
+#[cfg(msim)]
+pub mod advance_epoch_result_injection {
+    use std::cell::RefCell;
+    use sui_types::error::{ExecutionError, ExecutionErrorKind};
+
+    thread_local! {
+        static OVERRIDE: RefCell<bool>  = RefCell::new(false);
+    }
+
+    pub fn set_override(value: bool) {
+        OVERRIDE.with(|o| *o.borrow_mut() = value);
+    }
+
+    /// This function is used to modify the result of advance_epoch transaction for testing.
+    /// If the override is set, the result will be an execution error, otherwise the original result will be returned.
+    pub fn maybe_modify_result(result: Result<(), ExecutionError>) -> Result<(), ExecutionError> {
+        if OVERRIDE.with(|o| *o.borrow()) {
+            Err::<(), ExecutionError>(ExecutionError::new(
+                ExecutionErrorKind::FunctionNotFound,
+                None,
+            ))
+        } else {
+            result
+        }
+    }
 }

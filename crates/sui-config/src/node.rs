@@ -29,6 +29,12 @@ use sui_types::multiaddr::Multiaddr;
 // Default max number of concurrent requests served
 pub const DEFAULT_GRPC_CONCURRENCY_LIMIT: usize = 20000000000;
 
+/// Default gas price of 100 Mist
+pub const DEFAULT_VALIDATOR_GAS_PRICE: u64 = 1000;
+
+/// Default commission rate of 2%
+pub const DEFAULT_COMMISSION_RATE: u64 = 200;
+
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -178,16 +184,8 @@ impl NodeConfig {
         }
     }
 
-    pub fn account_key_pair(&self) -> &SuiKeyPair {
-        self.account_key_pair.keypair()
-    }
-
     pub fn protocol_public_key(&self) -> AuthorityPublicKeyBytes {
         self.protocol_key_pair().public().into()
-    }
-
-    pub fn sui_address(&self) -> SuiAddress {
-        (&self.account_key_pair().public()).into()
     }
 
     pub fn db_path(&self) -> PathBuf {
@@ -288,6 +286,11 @@ pub struct ExpensiveSafetyCheckConfig {
     /// Disable state consistency check even when we are running in debug mode.
     #[serde(default)]
     force_disable_state_consistency_check: bool,
+
+    /// If enabled, we run the Move VM in paranoid mode, which provides protection
+    /// against some (but not all) potential bugs in the bytecode verifier
+    #[serde(default)]
+    enable_move_vm_paranoid_checks: bool,
     // TODO: Add more expensive checks here
 }
 
@@ -298,7 +301,12 @@ impl ExpensiveSafetyCheckConfig {
             force_disable_epoch_sui_conservation_check: false,
             enable_state_consistency_check: true,
             force_disable_state_consistency_check: false,
+            enable_move_vm_paranoid_checks: true,
         }
+    }
+
+    pub fn enable_paranoid_checks(&mut self) {
+        self.enable_move_vm_paranoid_checks = true
     }
 
     pub fn force_disable_epoch_sui_conservation_check(&mut self) {
@@ -317,6 +325,10 @@ impl ExpensiveSafetyCheckConfig {
     pub fn enable_state_consistency_check(&self) -> bool {
         (self.enable_state_consistency_check || cfg!(debug_assertions))
             && !self.force_disable_state_consistency_check
+    }
+
+    pub fn enable_move_vm_paranoid_checks(&self) -> bool {
+        self.enable_move_vm_paranoid_checks
     }
 }
 
@@ -432,12 +444,6 @@ pub struct ValidatorInfo {
 }
 
 impl ValidatorInfo {
-    /// Default gas price of 1000 Mist
-    pub const DEFAULT_GAS_PRICE: u64 = 1000;
-
-    /// Default commission rate of 2%
-    pub const DEFAULT_COMMISSION_RATE: u64 = 200;
-
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -668,9 +674,7 @@ mod tests {
     use fastcrypto::traits::KeyPair;
     use rand::{rngs::StdRng, SeedableRng};
     use sui_keys::keypair_file::{write_authority_keypair_to_file, write_keypair_to_file};
-    use sui_types::crypto::{
-        get_key_pair_from_rng, AccountKeyPair, AuthorityKeyPair, NetworkKeyPair, SuiKeyPair,
-    };
+    use sui_types::crypto::{get_key_pair_from_rng, AuthorityKeyPair, NetworkKeyPair, SuiKeyPair};
 
     use super::Genesis;
     use crate::NodeConfig;
@@ -741,10 +745,6 @@ mod tests {
             get_key_pair_from_rng(&mut StdRng::from_seed([0; 32])).1;
         let worker_key_pair: NetworkKeyPair =
             get_key_pair_from_rng(&mut StdRng::from_seed([0; 32])).1;
-        let account_key_pair: SuiKeyPair =
-            get_key_pair_from_rng::<AccountKeyPair, _>(&mut StdRng::from_seed([0; 32]))
-                .1
-                .into();
         let network_key_pair: NetworkKeyPair =
             get_key_pair_from_rng(&mut StdRng::from_seed([0; 32])).1;
 
@@ -759,7 +759,6 @@ mod tests {
             PathBuf::from("network.key"),
         )
         .unwrap();
-        write_keypair_to_file(&account_key_pair, PathBuf::from("account.key")).unwrap();
 
         const TEMPLATE: &str = include_str!("../data/fullnode-template-with-path.yaml");
         let template: NodeConfig = serde_yaml::from_str(TEMPLATE).unwrap();
@@ -770,10 +769,6 @@ mod tests {
         assert_eq!(
             template.network_key_pair().public(),
             network_key_pair.public()
-        );
-        assert_eq!(
-            template.account_key_pair().public(),
-            account_key_pair.public()
         );
         assert_eq!(
             template.worker_key_pair().public(),

@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use async_trait::async_trait;
+use prometheus::Histogram;
 
+use move_core_types::identifier::Identifier;
 use sui_json_rpc_types::{
     Checkpoint as RpcCheckpoint, CheckpointId, EpochInfo, EventFilter, EventPage, MoveCallMetrics,
     NetworkMetrics, SuiObjectData, SuiObjectDataFilter, SuiTransactionBlockResponse,
     SuiTransactionBlockResponseOptions,
 };
-use sui_types::base_types::{EpochId, ObjectID, SequenceNumber};
+use sui_types::base_types::{EpochId, ObjectID, SequenceNumber, SuiAddress, VersionNumber};
 use sui_types::digests::CheckpointDigest;
 use sui_types::error::SuiError;
 use sui_types::event::EventID;
@@ -126,8 +128,8 @@ pub trait IndexerStore {
 
     async fn get_transaction_page_by_sender_recipient_address(
         &self,
-        sender_address: Option<String>,
-        recipient_address: String,
+        sender_address: Option<SuiAddress>,
+        recipient_address: SuiAddress,
         start_sequence: Option<i64>,
         limit: usize,
         is_descending: bool,
@@ -135,7 +137,7 @@ pub trait IndexerStore {
 
     async fn get_transaction_page_by_input_object(
         &self,
-        object_id: String,
+        object_id: ObjectID,
         version: Option<i64>,
         start_sequence: Option<i64>,
         limit: usize,
@@ -144,9 +146,9 @@ pub trait IndexerStore {
 
     async fn get_transaction_page_by_move_call(
         &self,
-        package: String,
-        module: Option<String>,
-        function: Option<String>,
+        package: ObjectID,
+        module: Option<Identifier>,
+        function: Option<Identifier>,
         start_sequence: Option<i64>,
         limit: usize,
         is_descending: bool,
@@ -184,10 +186,35 @@ pub trait IndexerStore {
         tx: Transaction,
         tx_object_changes: TransactionObjectChanges,
     ) -> Result<usize, IndexerError>;
-    async fn persist_checkpoint(
+    // TODO(gegaowp): keep this method in this trait for now for easier reverting,
+    // will remove it if it's no longer needed.
+    async fn persist_all_checkpoint_data(
         &self,
         data: &TemporaryCheckpointStore,
     ) -> Result<usize, IndexerError>;
+    async fn persist_checkpoint_transactions(
+        &self,
+        checkpoint: &Checkpoint,
+        transactions: &[Transaction],
+    ) -> Result<usize, IndexerError>;
+    async fn persist_object_changes(
+        &self,
+        checkpoint_seq: i64,
+        tx_object_changes: &[TransactionObjectChanges],
+        object_mutation_latency: Histogram,
+        object_deletion_latency: Histogram,
+    ) -> Result<(), IndexerError>;
+    async fn persist_events(&self, events: &[Event]) -> Result<(), IndexerError>;
+    async fn persist_addresses(&self, addresses: &[Address]) -> Result<(), IndexerError>;
+    async fn persist_packages(&self, packages: &[Package]) -> Result<(), IndexerError>;
+    // NOTE: these tables are for tx query performance optimization
+    async fn persist_transaction_index_tables(
+        &self,
+        input_objects: &[InputObject],
+        move_calls: &[MoveCall],
+        recipients: &[Recipient],
+    ) -> Result<(), IndexerError>;
+
     async fn persist_epoch(&self, data: &TemporaryEpochStore) -> Result<(), IndexerError>;
 
     async fn get_epochs(
@@ -224,6 +251,24 @@ impl ObjectStore for CheckpointData {
                 _ => None,
             }))
     }
+
+    fn get_object_by_key(
+        &self,
+        object_id: &ObjectID,
+        version: VersionNumber,
+    ) -> Result<Option<sui_types::object::Object>, SuiError> {
+        Ok(self
+            .changed_objects
+            .iter()
+            .find_map(|(status, o)| match status {
+                ObjectStatus::Created | ObjectStatus::Mutated
+                    if &o.object_id == object_id && o.version == version =>
+                {
+                    o.clone().try_into().ok()
+                }
+                _ => None,
+            }))
+    }
 }
 
 // Per checkpoint indexing
@@ -231,7 +276,7 @@ pub struct TemporaryCheckpointStore {
     pub checkpoint: Checkpoint,
     pub transactions: Vec<Transaction>,
     pub events: Vec<Event>,
-    pub objects_changes: Vec<TransactionObjectChanges>,
+    pub object_changes: Vec<TransactionObjectChanges>,
     pub addresses: Vec<Address>,
     pub packages: Vec<Package>,
     pub input_objects: Vec<InputObject>,

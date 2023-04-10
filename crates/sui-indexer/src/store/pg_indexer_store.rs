@@ -21,6 +21,7 @@ use fastcrypto::hash::Digest;
 use fastcrypto::traits::ToFromBytes;
 use move_bytecode_utils::module_cache::SyncModuleCache;
 use move_core_types::identifier::Identifier;
+use prometheus::Histogram;
 use tracing::info;
 
 use sui_json_rpc::{ObjectProvider, ObjectProviderCache};
@@ -44,6 +45,7 @@ use sui_types::messages_checkpoint::{
 use sui_types::object::ObjectRead;
 
 use crate::errors::{Context, IndexerError};
+use crate::models::addresses::Address;
 use crate::models::checkpoints::Checkpoint;
 use crate::models::epoch::DBEpochInfo;
 use crate::models::events::Event;
@@ -51,7 +53,9 @@ use crate::models::network_metrics::{DBMoveCallMetrics, DBNetworkMetrics};
 use crate::models::objects::{
     compose_object_bulk_insert_update_query, group_and_sort_objects, Object,
 };
+use crate::models::packages::Package;
 use crate::models::system_state::DBValidatorSummary;
+use crate::models::transaction_index::{InputObject, MoveCall, Recipient};
 use crate::models::transactions::Transaction;
 use crate::schema::{
     addresses, checkpoints, checkpoints::dsl as checkpoints_dsl, epochs, epochs::dsl as epochs_dsl,
@@ -95,6 +99,8 @@ struct TempDigestTable {
 #[derive(Clone)]
 pub struct PgIndexerStore {
     cp: AsyncPgConnectionPool,
+    // MUSTFIX(gegaowp): temporarily disable partition management.
+    #[allow(dead_code)]
     partition_manager: PartitionManager,
     module_cache: Arc<SyncModuleCache<IndexerModuleResolver>>,
 }
@@ -219,7 +225,7 @@ impl IndexerStore for PgIndexerStore {
             let cp: Checkpoint = match id {
                 CheckpointId::SequenceNumber(seq) => {
                     checkpoints_dsl::checkpoints
-                        .filter(checkpoints::sequence_number.eq(<u64>::from(seq) as i64))
+                        .filter(checkpoints::sequence_number.eq(seq as i64))
                         .limit(1)
                         .first(conn)
                         .await
@@ -937,7 +943,7 @@ impl IndexerStore for PgIndexerStore {
 
     async fn get_transaction_page_by_input_object(
         &self,
-        object_id: String,
+        object_id: ObjectID,
         version: Option<i64>,
         start_sequence: Option<i64>,
         limit: usize,
@@ -945,10 +951,10 @@ impl IndexerStore for PgIndexerStore {
     ) -> Result<Vec<Transaction>, IndexerError> {
         let sql_query = format!(
             "SELECT transaction_digest as digest_name FROM (
-                SELECT transaction_digest, max(id) AS max_id 
+                SELECT transaction_digest, max(id) AS max_id
                 FROM input_objects
-                WHERE object_id = '{}' {} {} 
-                GROUP BY transaction_digest 
+                WHERE object_id = '{}' {} {}
+                GROUP BY transaction_digest
                 ORDER BY max_id {} LIMIT {}
             ) AS t",
             object_id,
@@ -979,19 +985,22 @@ impl IndexerStore for PgIndexerStore {
 
     async fn get_transaction_page_by_move_call(
         &self,
-        package_name: String,
-        module_name: Option<String>,
-        function_name: Option<String>,
+        package_name: ObjectID,
+        module_name: Option<Identifier>,
+        function_name: Option<Identifier>,
         start_sequence: Option<i64>,
         limit: usize,
         is_descending: bool,
     ) -> Result<Vec<Transaction>, IndexerError> {
+        // note: module_name and function_name are user-controlled, which is scary.
+        // however, but valid Move identifiers can only contain 0-9, a-z, A-Z, and _,
+        // so it is safe to use them as-is in the query below
         let sql_query = format!(
             "SELECT transaction_digest as digest_name FROM (
-                SELECT transaction_digest, max(id) AS max_id 
+                SELECT transaction_digest, max(id) AS max_id
                 FROM move_calls
                 WHERE move_package = '{}' {} {} {}
-                GROUP BY transaction_digest 
+                GROUP BY transaction_digest
                 ORDER BY max_id {} LIMIT {}
             ) AS t",
             package_name,
@@ -1029,8 +1038,8 @@ impl IndexerStore for PgIndexerStore {
 
     async fn get_transaction_page_by_sender_recipient_address(
         &self,
-        from: Option<String>,
-        to: String,
+        from: Option<SuiAddress>,
+        to: SuiAddress,
         start_sequence: Option<i64>,
         limit: usize,
         is_descending: bool,
@@ -1131,13 +1140,15 @@ impl IndexerStore for PgIndexerStore {
                 conn,
                 tx_object_changes.changed_objects,
                 deleted_objects,
+                None,
+                None,
             )
             .await
         }
         .scope_boxed())
     }
 
-    async fn persist_checkpoint(
+    async fn persist_all_checkpoint_data(
         &self,
         data: &TemporaryCheckpointStore,
     ) -> Result<usize, IndexerError> {
@@ -1145,7 +1156,7 @@ impl IndexerStore for PgIndexerStore {
             checkpoint,
             transactions,
             events,
-            objects_changes: tx_object_changes,
+            object_changes: tx_object_changes,
             addresses,
             packages,
             input_objects,
@@ -1197,7 +1208,8 @@ impl IndexerStore for PgIndexerStore {
                 .iter()
                 .map(|deleted_object| deleted_object.clone().into())
                 .collect();
-            persist_transaction_object_changes(conn, mutated_objects, deleted_objects).await?;
+            persist_transaction_object_changes(conn, mutated_objects, deleted_objects, None, None)
+                .await?;
 
             // Commit indexed addresses
             for addresses_chunk in addresses.chunks(PG_COMMIT_CHUNK_SIZE) {
@@ -1280,16 +1292,200 @@ WHERE e1.epoch = e2.epoch
         .scope_boxed())
     }
 
-    async fn persist_epoch(&self, data: &TemporaryEpochStore) -> Result<(), IndexerError> {
-        let last_epoch_cp_id = if data.last_epoch.is_none() {
-            0
-        } else {
-            self.get_current_epoch().await?.first_checkpoint_id as i64
-        };
+    async fn persist_checkpoint_transactions(
+        &self,
+        checkpoint: &Checkpoint,
+        transactions: &[Transaction],
+    ) -> Result<usize, IndexerError> {
+        transactional!(&self.cp, |conn| async {
+            // Commit indexed transactions
+            for transaction_chunk in transactions.chunks(PG_COMMIT_CHUNK_SIZE) {
+                diesel::insert_into(transactions::table)
+                    .values(transaction_chunk)
+                    .on_conflict(transactions::transaction_digest)
+                    .do_update()
+                    .set((
+                        transactions::timestamp_ms.eq(excluded(transactions::timestamp_ms)),
+                        transactions::checkpoint_sequence_number
+                            .eq(excluded(transactions::checkpoint_sequence_number)),
+                    ))
+                    .execute(conn)
+                    .await
+                    .map_err(IndexerError::from)
+                    .context("Failed writing transactions to PostgresDB")?;
+            }
 
-        self.partition_manager
-            .advance_epoch(&data.new_epoch, last_epoch_cp_id)
-            .await?;
+            // update epoch transaction count
+            let sql = "UPDATE epochs e1
+SET epoch_total_transactions = e2.epoch_total_transactions + $1
+FROM epochs e2
+WHERE e1.epoch = e2.epoch
+  AND e1.epoch = $2;";
+            diesel::sql_query(sql)
+                .bind::<BigInt, _>(checkpoint.transactions.len() as i64)
+                .bind::<BigInt, _>(checkpoint.epoch)
+                .as_query()
+                .execute(conn)
+                .await?;
+
+            // Commit indexed checkpoint last, so that if the checkpoint is committed,
+            // all related data have been committed as well.
+            diesel::insert_into(checkpoints::table)
+                .values(checkpoint)
+                .on_conflict_do_nothing()
+                .execute(conn)
+                .await
+                .map_err(IndexerError::from)
+                .context("Failed writing checkpoint to PostgresDB")
+        }
+        .scope_boxed())
+    }
+
+    async fn persist_object_changes(
+        &self,
+        checkpoint_seq: i64,
+        tx_object_changes: &[TransactionObjectChanges],
+        object_mutation_latency: Histogram,
+        object_deletion_latency: Histogram,
+    ) -> Result<(), IndexerError> {
+        transactional!(&self.cp, |conn| {
+            async {
+            let mutated_objects: Vec<Object> = tx_object_changes
+                .iter()
+                .flat_map(|changes| changes.changed_objects.iter().cloned())
+                .collect();
+
+            let deleted_changes = tx_object_changes
+                .iter()
+                .flat_map(|changes| changes.deleted_objects.iter().cloned())
+                .collect::<Vec<_>>();
+            let deleted_objects: Vec<Object> = deleted_changes
+                .iter()
+                .map(|deleted_object| deleted_object.clone().into())
+                .collect();
+            let (mutation_count, deletion_count) = (mutated_objects.len(),
+            deleted_objects.len());
+            persist_transaction_object_changes(conn, mutated_objects, deleted_objects, Some(object_mutation_latency), Some(object_deletion_latency)).await?;
+            info!(
+                "Object checkpoint {} committed with {} transaction, {} mutated objects and {} deleted objects.",
+                checkpoint_seq,
+                tx_object_changes.len(),
+                mutation_count,
+                deletion_count
+            );
+            Ok::<(), IndexerError>(())
+        }
+        .scope_boxed()
+        })?;
+        Ok(())
+    }
+
+    async fn persist_events(&self, events: &[Event]) -> Result<(), IndexerError> {
+        transactional!(&self.cp, |conn| async {
+            for event_chunk in events.chunks(PG_COMMIT_CHUNK_SIZE) {
+                diesel::insert_into(events::table)
+                    .values(event_chunk)
+                    .on_conflict_do_nothing()
+                    .execute(conn)
+                    .await
+                    .map_err(IndexerError::from)
+                    .context("Failed writing events to PostgresDB")?;
+            }
+            Ok::<(), IndexerError>(())
+        }
+        .scope_boxed())?;
+        Ok(())
+    }
+
+    async fn persist_addresses(&self, addresses: &[Address]) -> Result<(), IndexerError> {
+        transactional!(&self.cp, |conn| async {
+            for addresses_chunk in addresses.chunks(PG_COMMIT_CHUNK_SIZE) {
+                diesel::insert_into(addresses::table)
+                    .values(addresses_chunk)
+                    .on_conflict(addresses::account_address)
+                    .do_nothing()
+                    .execute(conn)
+                    .await
+                    .map_err(IndexerError::from)
+                    .context("Failed writing addresses to PostgresDB")?;
+            }
+            Ok::<(), IndexerError>(())
+        }
+        .scope_boxed())?;
+        Ok(())
+    }
+    async fn persist_packages(&self, packages: &[Package]) -> Result<(), IndexerError> {
+        transactional!(&self.cp, |conn| async {
+            for packages_chunk in packages.chunks(PG_COMMIT_CHUNK_SIZE) {
+                diesel::insert_into(packages::table)
+                    .values(packages_chunk)
+                    .on_conflict_do_nothing()
+                    .execute(conn)
+                    .await
+                    .map_err(IndexerError::from)
+                    .context("Failed writing packages to PostgresDB")?;
+            }
+            Ok::<(), IndexerError>(())
+        }
+        .scope_boxed())?;
+        Ok(())
+    }
+
+    async fn persist_transaction_index_tables(
+        &self,
+        input_objects: &[InputObject],
+        move_calls: &[MoveCall],
+        recipients: &[Recipient],
+    ) -> Result<(), IndexerError> {
+        transactional!(&self.cp, |conn| async {
+            // Commit indexed move calls
+            for move_calls_chunk in move_calls.chunks(PG_COMMIT_CHUNK_SIZE) {
+                diesel::insert_into(move_calls::table)
+                    .values(move_calls_chunk)
+                    .on_conflict_do_nothing()
+                    .execute(conn)
+                    .await
+                    .map_err(IndexerError::from)
+                    .context("Failed writing move_calls to PostgresDB")?;
+            }
+
+            // Commit indexed input objects
+            for input_objects_chunk in input_objects.chunks(PG_COMMIT_CHUNK_SIZE) {
+                diesel::insert_into(input_objects::table)
+                    .values(input_objects_chunk)
+                    .on_conflict_do_nothing()
+                    .execute(conn)
+                    .await
+                    .map_err(IndexerError::from)
+                    .context("Failed writing input_objects to PostgresDB")?;
+            }
+
+            // Commit indexed recipients
+            for recipients_chunk in recipients.chunks(PG_COMMIT_CHUNK_SIZE) {
+                diesel::insert_into(recipients::table)
+                    .values(recipients_chunk)
+                    .on_conflict_do_nothing()
+                    .execute(conn)
+                    .await
+                    .map_err(IndexerError::from)
+                    .context("Failed writing recipients to PostgresDB")?;
+            }
+            Ok::<(), IndexerError>(())
+        }
+        .scope_boxed())?;
+        Ok(())
+    }
+
+    async fn persist_epoch(&self, data: &TemporaryEpochStore) -> Result<(), IndexerError> {
+        // MUSTFIX(gegaowp): temporarily disable the epoch advance logic.
+        // let last_epoch_cp_id = if data.last_epoch.is_none() {
+        //     0
+        // } else {
+        //     self.get_current_epoch().await?.first_checkpoint_id as i64
+        // };
+        // self.partition_manager
+        //     .advance_epoch(&data.new_epoch, last_epoch_cp_id)
+        //     .await?;
 
         transactional!(&self.cp, |conn| async {
             if let Some(last_epoch) = &data.last_epoch {
@@ -1437,52 +1633,111 @@ async fn persist_transaction_object_changes(
     conn: &mut AsyncPgConnection,
     mutated_objects: Vec<Object>,
     deleted_objects: Vec<Object>,
+    object_mutation_latency: Option<Histogram>,
+    object_deletion_latency: Option<Histogram>,
 ) -> Result<usize, IndexerError> {
     // TODO(gegaowp): tx object changes from one tx do not need group_and_sort_objects, will optimize soon after this PR.
     // NOTE: to avoid error of `ON CONFLICT DO UPDATE command cannot affect row a second time`,
     // we have to limit update of one object once in a query.
-    let mut mutated_object_groups = group_and_sort_objects(mutated_objects);
-    loop {
-        let mutated_object_group = mutated_object_groups
-            .iter_mut()
-            .filter_map(|group| group.pop())
-            .collect::<Vec<_>>();
-        if mutated_object_group.is_empty() {
-            break;
+
+    // MUSTFIX(gegaowp): clean up the metrics codes after experiment
+    if let Some(object_mutation_latency) = object_mutation_latency {
+        let object_mutation_guard = object_mutation_latency.start_timer();
+        let mut mutated_object_groups = group_and_sort_objects(mutated_objects);
+        loop {
+            let mutated_object_group = mutated_object_groups
+                .iter_mut()
+                .filter_map(|group| group.pop())
+                .collect::<Vec<_>>();
+            if mutated_object_group.is_empty() {
+                break;
+            }
+            // bulk insert/update via UNNEST trick
+            let insert_update_query =
+                compose_object_bulk_insert_update_query(&mutated_object_group);
+            diesel::sql_query(insert_update_query)
+                .execute(conn)
+                .await
+                .map_err(|e| {
+                    IndexerError::PostgresWriteError(format!(
+                        "Failed writing mutated objects to PostgresDB with error: {:?}",
+                        e
+                    ))
+                })?;
         }
-        // bulk insert/update via UNNEST trick
-        let insert_update_query = compose_object_bulk_insert_update_query(&mutated_object_group);
-        diesel::sql_query(insert_update_query)
-            .execute(conn)
-            .await
-            .map_err(|e| {
-                IndexerError::PostgresWriteError(format!(
-                    "Failed writing mutated objects to PostgresDB with error: {:?}",
-                    e
-                ))
-            })?;
+        object_mutation_guard.stop_and_record();
+    } else {
+        let mut mutated_object_groups = group_and_sort_objects(mutated_objects);
+        loop {
+            let mutated_object_group = mutated_object_groups
+                .iter_mut()
+                .filter_map(|group| group.pop())
+                .collect::<Vec<_>>();
+            if mutated_object_group.is_empty() {
+                break;
+            }
+            // bulk insert/update via UNNEST trick
+            let insert_update_query =
+                compose_object_bulk_insert_update_query(&mutated_object_group);
+            diesel::sql_query(insert_update_query)
+                .execute(conn)
+                .await
+                .map_err(|e| {
+                    IndexerError::PostgresWriteError(format!(
+                        "Failed writing mutated objects to PostgresDB with error: {:?}",
+                        e
+                    ))
+                })?;
+        }
     }
 
-    for deleted_object_change_chunk in deleted_objects.chunks(PG_COMMIT_CHUNK_SIZE) {
-        diesel::insert_into(objects::table)
-            .values(deleted_object_change_chunk)
-            .on_conflict(objects::object_id)
-            .do_update()
-            .set((
-                objects::epoch.eq(excluded(objects::epoch)),
-                objects::checkpoint.eq(excluded(objects::checkpoint)),
-                objects::version.eq(excluded(objects::version)),
-                objects::previous_transaction.eq(excluded(objects::previous_transaction)),
-                objects::object_status.eq(excluded(objects::object_status)),
-            ))
-            .execute(conn)
-            .await
-            .map_err(|e| {
-                IndexerError::PostgresWriteError(format!(
-                    "Failed writing deleted objects to PostgresDB with error: {:?}",
-                    e
+    // MUSTFIX(gegaowp): clean up the metrics codes after experiment
+    if let Some(object_deletion_latency) = object_deletion_latency {
+        let object_deletion_guard = object_deletion_latency.start_timer();
+        for deleted_object_change_chunk in deleted_objects.chunks(PG_COMMIT_CHUNK_SIZE) {
+            diesel::insert_into(objects::table)
+                .values(deleted_object_change_chunk)
+                .on_conflict(objects::object_id)
+                .do_update()
+                .set((
+                    objects::epoch.eq(excluded(objects::epoch)),
+                    objects::checkpoint.eq(excluded(objects::checkpoint)),
+                    objects::version.eq(excluded(objects::version)),
+                    objects::previous_transaction.eq(excluded(objects::previous_transaction)),
+                    objects::object_status.eq(excluded(objects::object_status)),
                 ))
-            })?;
+                .execute(conn)
+                .await
+                .map_err(|e| {
+                    IndexerError::PostgresWriteError(format!(
+                        "Failed writing deleted objects to PostgresDB with error: {:?}",
+                        e
+                    ))
+                })?;
+        }
+        object_deletion_guard.stop_and_record();
+    } else {
+        for deleted_object_change_chunk in deleted_objects.chunks(PG_COMMIT_CHUNK_SIZE) {
+            diesel::insert_into(objects::table)
+                .values(deleted_object_change_chunk)
+                .on_conflict(objects::object_id)
+                .do_update()
+                .set((
+                    objects::epoch.eq(excluded(objects::epoch)),
+                    objects::checkpoint.eq(excluded(objects::checkpoint)),
+                    objects::version.eq(excluded(objects::version)),
+                    objects::previous_transaction.eq(excluded(objects::previous_transaction)),
+                    objects::object_status.eq(excluded(objects::object_status)),
+                ))
+                .execute(conn)
+                .await
+                .map_err(|e| {
+                    IndexerError::PostgresWriteError(format!(
+                        "Failed writing deleted objects to PostgresDB with error: {:?}",
+                        e
+                    ))
+                })?;
+        }
     }
     Ok(0)
 }
@@ -1505,6 +1760,8 @@ impl PartitionManager {
         Ok(manager)
     }
 
+    // MUSTFIX(gegaowp): temporarily disable partition management.
+    #[allow(dead_code)]
     async fn advance_epoch(
         &self,
         new_epoch: &DBEpochInfo,
@@ -1524,7 +1781,9 @@ impl PartitionManager {
                         "ALTER TABLE {table} DETACH PARTITION {table}_partition_{last_epoch_id};"
                     );
                     let attach_partition_with_new_range = format!("ALTER TABLE {table} ATTACH PARTITION {table}_partition_{last_epoch_id} FOR VALUES FROM ('{last_epoch_start_cp}') TO ('{next_epoch_start_cp}');");
+                    info! {"Changed last epoch partition {last_epoch_id} for {table}, with new range {last_epoch_start_cp} to {next_epoch_start_cp}"};
                     let new_partition = format!("CREATE TABLE {table}_partition_{next_epoch_id} PARTITION OF {table} FOR VALUES FROM ({next_epoch_start_cp}) TO (MAXVALUE);");
+                    info! {"Created epoch partition {next_epoch_id} for {table}, with new range {next_epoch_start_cp} to MAXVALUE"};
                     diesel::RunQueryDsl::execute(diesel::sql_query(detach_partition), conn)?;
                     diesel::RunQueryDsl::execute(
                         diesel::sql_query(attach_partition_with_new_range),

@@ -226,6 +226,15 @@ impl MoveObjectType {
         }
     }
 
+    /// Return true if `self` is 0x2::coin::Coin<t>
+    pub fn is_coin_t(&self, t: &TypeTag) -> bool {
+        match &self.0 {
+            MoveObjectType_::GasCoin => GAS::is_gas_type(t),
+            MoveObjectType_::Coin(c) => t == c,
+            MoveObjectType_::StakedSui | MoveObjectType_::Other(_) => false,
+        }
+    }
+
     pub fn is_staked_sui(&self) -> bool {
         match &self.0 {
             MoveObjectType_::StakedSui => true,
@@ -379,6 +388,21 @@ impl ObjectType {
     pub fn is_gas_coin(&self) -> bool {
         match self {
             ObjectType::Struct(s) => s.is_gas_coin(),
+            ObjectType::Package => false,
+        }
+    }
+
+    pub fn is_coin(&self) -> bool {
+        match self {
+            ObjectType::Struct(s) => s.is_coin(),
+            ObjectType::Package => false,
+        }
+    }
+
+    /// Return true if `self` is 0x2::coin::Coin<t>
+    pub fn is_coin_t(&self, t: &TypeTag) -> bool {
+        match self {
+            ObjectType::Struct(s) => s.is_coin_t(t),
             ObjectType::Package => false,
         }
     }
@@ -548,9 +572,9 @@ impl TryFrom<&GenericSignature> for SuiAddress {
             GenericSignature::Signature(sig) => {
                 let scheme = sig.scheme();
                 let pub_key_bytes = sig.public_key_bytes();
-                let pub_key = PublicKey::try_from_bytes(scheme, pub_key_bytes).map_err(|e| {
+                let pub_key = PublicKey::try_from_bytes(scheme, pub_key_bytes).map_err(|_| {
                     SuiError::InvalidSignature {
-                        error: e.to_string(),
+                        error: "Cannot parse pubkey".to_string(),
                     }
                 })?;
                 SuiAddress::from(&pub_key)

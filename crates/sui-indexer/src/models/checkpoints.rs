@@ -23,7 +23,6 @@ pub struct Checkpoint {
     pub transactions: Vec<Option<String>>,
     pub previous_checkpoint_digest: Option<String>,
     pub end_of_epoch: bool,
-    pub validator_signature: String,
     pub total_gas_cost: i64,
     pub total_computation_cost: i64,
     pub total_storage_cost: i64,
@@ -32,6 +31,7 @@ pub struct Checkpoint {
     pub total_transactions: i64,
     pub network_total_transactions: i64,
     pub timestamp_ms: i64,
+    pub validator_signature: String,
 }
 
 impl Checkpoint {
@@ -51,16 +51,13 @@ impl Checkpoint {
             .map(|t| Some(t.base58_encode()))
             .collect();
 
-        let sequence_number: u64 = rpc_checkpoint.sequence_number.into();
-
         Ok(Checkpoint {
-            sequence_number: sequence_number as i64,
+            sequence_number: rpc_checkpoint.sequence_number as i64,
             checkpoint_digest: rpc_checkpoint.digest.base58_encode(),
             epoch: rpc_checkpoint.epoch as i64,
             transactions: checkpoint_transactions,
             previous_checkpoint_digest: rpc_checkpoint.previous_digest.map(|d| d.base58_encode()),
             end_of_epoch: rpc_checkpoint.end_of_epoch_data.is_some(),
-            validator_signature: rpc_checkpoint.validator_signature.encode_base64(),
             total_gas_cost: total_gas_cost as i64,
             total_computation_cost: rpc_checkpoint
                 .epoch_rolling_gas_cost_summary
@@ -72,6 +69,7 @@ impl Checkpoint {
             network_total_transactions: rpc_checkpoint.network_total_transactions as i64,
             timestamp_ms: rpc_checkpoint.timestamp_ms as i64,
             total_transactions: total_transactions as i64,
+            validator_signature: rpc_checkpoint.validator_signature.encode_base64(),
         })
     }
 
@@ -124,7 +122,7 @@ impl Checkpoint {
 
         Ok(RpcCheckpoint {
             epoch: self.epoch as u64,
-            sequence_number: (self.sequence_number as u64).into(),
+            sequence_number: self.sequence_number as u64,
             digest: parsed_digest,
             previous_digest: parsed_previous_digest,
             end_of_epoch_data,

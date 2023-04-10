@@ -123,7 +123,7 @@ dependencies = [
 [[package]]
 name = "anemo"
 version = "0.0.0"
-source = "git+https://github.com/mystenlabs/anemo.git?rev=fafd8a33615a1d5f0ea99ae3d0cc993b833fa313#fafd8a33615a1d5f0ea99ae3d0cc993b833fa313"
+source = "git+https://github.com/mystenlabs/anemo.git?rev=40e3bf357313fe5caa924673711af8be4dc4096e#40e3bf357313fe5caa924673711af8be4dc4096e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -156,7 +156,7 @@ dependencies = [
 [[package]]
 name = "anemo-build"
 version = "0.0.0"
-source = "git+https://github.com/mystenlabs/anemo.git?rev=fafd8a33615a1d5f0ea99ae3d0cc993b833fa313#fafd8a33615a1d5f0ea99ae3d0cc993b833fa313"
+source = "git+https://github.com/mystenlabs/anemo.git?rev=40e3bf357313fe5caa924673711af8be4dc4096e#40e3bf357313fe5caa924673711af8be4dc4096e"
 dependencies = [
  "prettyplease",
  "proc-macro2 1.0.54",
@@ -167,7 +167,7 @@ dependencies = [
 [[package]]
 name = "anemo-cli"
 version = "0.0.0"
-source = "git+https://github.com/mystenlabs/anemo.git?rev=fafd8a33615a1d5f0ea99ae3d0cc993b833fa313#fafd8a33615a1d5f0ea99ae3d0cc993b833fa313"
+source = "git+https://github.com/mystenlabs/anemo.git?rev=40e3bf357313fe5caa924673711af8be4dc4096e#40e3bf357313fe5caa924673711af8be4dc4096e"
 dependencies = [
  "anemo",
  "anemo-tower",
@@ -183,7 +183,7 @@ dependencies = [
 [[package]]
 name = "anemo-tower"
 version = "0.0.0"
-source = "git+https://github.com/mystenlabs/anemo.git?rev=fafd8a33615a1d5f0ea99ae3d0cc993b833fa313#fafd8a33615a1d5f0ea99ae3d0cc993b833fa313"
+source = "git+https://github.com/mystenlabs/anemo.git?rev=40e3bf357313fe5caa924673711af8be4dc4096e#40e3bf357313fe5caa924673711af8be4dc4096e"
 dependencies = [
  "anemo",
  "bytes",
@@ -8797,7 +8797,7 @@ checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "sui"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anemo",
  "anyhow",
@@ -8835,10 +8835,12 @@ dependencies = [
  "shared-crypto",
  "shell-words",
  "signature 1.6.4",
+ "sui-adapter",
  "sui-config",
  "sui-core",
  "sui-framework",
  "sui-framework-build",
+ "sui-framework-snapshot",
  "sui-json",
  "sui-json-rpc",
  "sui-json-rpc-types",
@@ -8924,6 +8926,8 @@ dependencies = [
  "strum_macros",
  "sui-config",
  "sui-core",
+ "sui-framework",
+ "sui-framework-snapshot",
  "sui-json-rpc-types",
  "sui-keys",
  "sui-macros",
@@ -9016,7 +9020,7 @@ dependencies = [
 
 [[package]]
 name = "sui-core"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -9135,7 +9139,7 @@ dependencies = [
 
 [[package]]
 name = "sui-faucet"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9188,10 +9192,12 @@ dependencies = [
  "move-vm-runtime",
  "move-vm-types",
  "once_cell",
+ "serde 1.0.152",
  "smallvec",
  "sui-framework-build",
  "sui-protocol-config",
  "sui-types",
+ "tracing",
  "workspace-hack",
 ]
 
@@ -9216,6 +9222,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sui-framework-snapshot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bcs",
+ "serde 1.0.152",
+ "serde_json",
+ "sui-framework",
+ "sui-protocol-config",
+ "sui-types",
+ "tokio",
+ "workspace-hack",
+]
+
+[[package]]
 name = "sui-framework-tests"
 version = "0.1.0"
 dependencies = [
@@ -9229,7 +9250,7 @@ dependencies = [
 
 [[package]]
 name = "sui-indexer"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9407,7 +9428,7 @@ dependencies = [
 
 [[package]]
 name = "sui-move"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -9482,7 +9503,7 @@ dependencies = [
 
 [[package]]
 name = "sui-node"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anemo",
  "anemo-tower",
@@ -9575,10 +9596,20 @@ name = "sui-protocol-config"
 version = "0.1.0"
 dependencies = [
  "insta",
- "schemars",
  "serde 1.0.152",
  "serde_with",
+ "sui-protocol-config-macros",
  "tracing",
+ "workspace-hack",
+]
+
+[[package]]
+name = "sui-protocol-config-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.54",
+ "quote 1.0.26",
+ "syn 1.0.107",
  "workspace-hack",
 ]
 
@@ -9673,7 +9704,7 @@ dependencies = [
 
 [[package]]
 name = "sui-rpc-loadgen"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9722,7 +9753,7 @@ dependencies = [
 
 [[package]]
 name = "sui-sdk"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -9908,7 +9939,7 @@ dependencies = [
 
 [[package]]
 name = "sui-tool"
-version = "0.30.0"
+version = "0.32.0"
 dependencies = [
  "anemo",
  "anemo-cli",

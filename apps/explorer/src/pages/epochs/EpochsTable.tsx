@@ -40,14 +40,17 @@ export function EpochsTable({
         ['epochs', { limit, cursor: pagination.cursor }],
         async () =>
             enhancedRpc.getEpochs({
-                limit,
-                cursor: pagination.cursor,
+                limit: limit.toString(),
+                cursor: pagination.cursor?.toString(),
                 descendingOrder: true,
             }),
         {
             keepPreviousData: true,
             // Disable refetching if not on the first page:
-            refetchInterval: pagination.cursor ? undefined : refetchInterval,
+            // refetchInterval: pagination.cursor ? undefined : refetchInterval,
+            retry: false,
+            staleTime: Infinity,
+            cacheTime: 24 * 60 * 60 * 1000,
         }
     );
 
@@ -99,8 +102,10 @@ export function EpochsTable({
                               <TxTableCol>
                                   <TxTimeType
                                       timestamp={
-                                          epoch.endOfEpochInfo
-                                              ?.epochEndTimestamp
+                                          +(
+                                              epoch.endOfEpochInfo
+                                                  ?.epochEndTimestamp ?? 0
+                                          )
                                       }
                                   />
                               </TxTableCol>
@@ -175,7 +180,7 @@ export function EpochsTable({
                     href="/recent?tab=epochs"
                     label="Epochs"
                     data={epochsData}
-                    count={countQuery.data}
+                    count={+(countQuery.data ?? 0)}
                     limit={limit}
                     onLimitChange={setLimit}
                     pagination={pagination}

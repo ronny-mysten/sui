@@ -25,7 +25,7 @@ use sui_types::base_types::{ObjectDigest, ObjectID, SequenceNumber, SuiAddress};
 use sui_types::crypto::AggregateAuthoritySignature;
 use sui_types::digests::TransactionDigest;
 use sui_types::gas_coin::GasCoin;
-use sui_types::messages::TransactionData;
+use sui_types::messages::{TransactionData, TEST_ONLY_GAS_UNIT_FOR_TRANSFER};
 use sui_types::messages_checkpoint::CheckpointDigest;
 use sui_types::object::Object;
 
@@ -46,13 +46,10 @@ fn indexer_benchmark(c: &mut Criterion) {
     });
 
     c.bench_function("persist_checkpoint", |b| {
-        b.iter(|| rt.block_on(store.persist_checkpoint(&checkpoints.pop().unwrap())))
+        b.iter(|| rt.block_on(store.persist_all_checkpoint_data(&checkpoints.pop().unwrap())))
     });
 
-    let mut checkpoints = (20..100)
-        .cycle()
-        .map(|i| CheckpointId::SequenceNumber(i.into()));
-
+    let mut checkpoints = (20..100).cycle().map(CheckpointId::SequenceNumber);
     c.bench_function("get_checkpoint", |b| {
         b.to_async(Runtime::new().unwrap())
             .iter(|| store.get_checkpoint(checkpoints.next().unwrap()))
@@ -82,7 +79,7 @@ fn create_checkpoint(sequence_number: i64) -> TemporaryCheckpointStore {
             .map(|_| create_transaction(sequence_number))
             .collect(),
         events: vec![],
-        objects_changes: vec![TransactionObjectChanges {
+        object_changes: vec![TransactionObjectChanges {
             changed_objects: (1..1000).map(|_| create_object(sequence_number)).collect(),
             deleted_objects: vec![],
         }],
@@ -95,6 +92,7 @@ fn create_checkpoint(sequence_number: i64) -> TemporaryCheckpointStore {
 }
 
 fn create_transaction(sequence_number: i64) -> Transaction {
+    let gas_price = 1000;
     let tx = TransactionData::new_pay_sui(
         SuiAddress::random_for_testing_only(),
         vec![],
@@ -105,8 +103,8 @@ fn create_transaction(sequence_number: i64) -> Transaction {
             SequenceNumber::new(),
             ObjectDigest::random(),
         ),
-        100000,
-        10000,
+        gas_price * TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
+        gas_price,
     )
     .unwrap();
 

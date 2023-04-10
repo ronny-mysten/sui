@@ -156,6 +156,10 @@
 				"fileName": "build/sui-local-network"
 			},
 			{
+				"label": "Sui Gas Charges",
+				"fileName": "build/sui-gas-charges"
+			},
+			{
 				"label": "Sui Object Display Standard",
 				"fileName": "build/sui-object-display"
 			},
@@ -187,6 +191,10 @@
 					{
 						"label": "Debug and Publish Move Packages",
 						"fileName": "build/move/debug-publish"
+					},
+					{
+						"label": "Upgrade Move Packages",
+						"fileName": "build/package-upgrades"
 					},
 					{
 						"label": "Sui Move Library",

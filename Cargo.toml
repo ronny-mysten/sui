@@ -77,6 +77,7 @@ members = [
     "crates/sui-faucet",
     "crates/sui-framework",
     "crates/sui-framework-build",
+    "crates/sui-framework-snapshot",
     "crates/sui-framework-tests",
     "crates/sui-indexer",
     "crates/sui-json",
@@ -91,6 +92,7 @@ members = [
     "crates/sui-open-rpc-macros",
     "crates/sui-proc-macros",
     "crates/sui-protocol-config",
+    "crates/sui-protocol-config-macros",
     "crates/sui-proxy",
     "crates/sui-rosetta",
     "crates/sui-rpc-loadgen",
@@ -131,7 +133,7 @@ members = [
 
 [workspace.package]
 # This version string will be inherited by sui-core, sui-faucet, sui-node, sui-tools, sui-sdk, and sui crates
-version = "0.30.0"
+version = "0.32.0"
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
@@ -199,10 +201,10 @@ fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "84fd7c74
 fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "84fd7c7428c5f59185aecc56a2e0a006e8e07de1", package = "fastcrypto-zkp" }
 
 # anemo dependencies
-anemo = { git = "https://github.com/mystenlabs/anemo.git", rev = "fafd8a33615a1d5f0ea99ae3d0cc993b833fa313" }
-anemo-build = { git = "https://github.com/mystenlabs/anemo.git", rev = "fafd8a33615a1d5f0ea99ae3d0cc993b833fa313" }
-anemo-cli = { git = "https://github.com/mystenlabs/anemo.git", rev = "fafd8a33615a1d5f0ea99ae3d0cc993b833fa313"}
-anemo-tower = { git = "https://github.com/mystenlabs/anemo.git", rev = "fafd8a33615a1d5f0ea99ae3d0cc993b833fa313"}
+anemo = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e" }
+anemo-build = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e" }
+anemo-cli = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e"}
+anemo-tower = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e"}
 
 # Use the same workspace-hack across crates.
 workspace-hack = { path = "crates/workspace-hack" }

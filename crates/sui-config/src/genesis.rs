@@ -17,7 +17,7 @@ use std::convert::TryInto;
 use std::{fs, path::Path};
 use sui_adapter::adapter::MoveVM;
 use sui_adapter::{adapter, execution_mode, programmable_transactions};
-use sui_framework::{MoveStdlib, SuiFramework, SuiSystem, SystemPackage};
+use sui_framework::BuiltInFramework;
 use sui_protocol_config::ProtocolConfig;
 use sui_types::base_types::{ExecutionDigests, TransactionDigest};
 use sui_types::base_types::{ObjectID, SequenceNumber, SuiAddress};
@@ -147,6 +147,10 @@ impl Genesis {
 
     pub fn committee_with_network(&self) -> CommitteeWithNetworkMetadata {
         self.sui_system_object().get_current_epoch_committee()
+    }
+
+    pub fn reference_gas_price(&self) -> u64 {
+        self.sui_system_object().reference_gas_price()
     }
 
     // TODO: No need to return SuiResult.
@@ -1209,18 +1213,15 @@ fn create_genesis_context(
     genesis_chain_parameters: &GenesisChainParameters,
     genesis_validators: &[GenesisValidatorMetadata],
     token_distribution_schedule: &TokenDistributionSchedule,
-    move_framework: Vec<Vec<u8>>,
-    sui_framework: Vec<Vec<u8>>,
-    sui_system_package: Vec<Vec<u8>>,
 ) -> TxContext {
     let mut hasher = DefaultHash::default();
     hasher.update(b"sui-genesis");
     hasher.update(&bcs::to_bytes(genesis_chain_parameters).unwrap());
     hasher.update(&bcs::to_bytes(genesis_validators).unwrap());
     hasher.update(&bcs::to_bytes(token_distribution_schedule).unwrap());
-    hasher.update(&bcs::to_bytes(&move_framework).unwrap());
-    hasher.update(&bcs::to_bytes(&sui_framework).unwrap());
-    hasher.update(&bcs::to_bytes(&sui_system_package).unwrap());
+    for system_package in BuiltInFramework::iter_system_packages() {
+        hasher.update(&bcs::to_bytes(system_package.bytes()).unwrap());
+    }
 
     let hash = hasher.finalize();
     let genesis_transaction_digest = TransactionDigest::new(hash.into());
@@ -1261,30 +1262,10 @@ fn build_unsigned_genesis_data(
         &genesis_chain_parameters,
         &genesis_validators,
         token_distribution_schedule,
-        MoveStdlib::as_bytes(),
-        SuiFramework::as_bytes(),
-        SuiSystem::as_bytes(),
     );
-
-    // Get Move and Sui Framework
-    let modules = [
-        (
-            MoveStdlib::as_modules(),
-            MoveStdlib::transitive_dependencies(),
-        ),
-        (
-            SuiFramework::as_modules(),
-            SuiFramework::transitive_dependencies(),
-        ),
-        (
-            SuiSystem::as_modules(),
-            SuiSystem::transitive_dependencies(),
-        ),
-    ];
 
     let objects = create_genesis_objects(
         &mut genesis_ctx,
-        &modules,
         objects,
         &genesis_validators,
         &genesis_chain_parameters,
@@ -1380,10 +1361,15 @@ fn create_genesis_transaction(
             protocol_config,
         );
 
-        let native_functions = sui_framework::natives::all_natives();
+        let native_functions = sui_framework::natives::all_natives(/* silent */ true);
+        let enable_move_vm_paranoid_checks = false;
         let move_vm = std::sync::Arc::new(
-            adapter::new_move_vm(native_functions, protocol_config)
-                .expect("We defined natives to not fail here"),
+            adapter::new_move_vm(
+                native_functions,
+                protocol_config,
+                enable_move_vm_paranoid_checks,
+            )
+            .expect("We defined natives to not fail here"),
         );
 
         let transaction_data = &genesis_transaction.data().intent_message().value;
@@ -1425,7 +1411,6 @@ fn create_genesis_transaction(
 
 fn create_genesis_objects(
     genesis_ctx: &mut TxContext,
-    modules: &[(&[CompiledModule], Vec<ObjectID>)],
     input_objects: &[Object],
     validators: &[GenesisValidatorMetadata],
     parameters: &GenesisChainParameters,
@@ -1435,17 +1420,23 @@ fn create_genesis_objects(
     let protocol_config =
         ProtocolConfig::get_for_version(ProtocolVersion::new(parameters.protocol_version));
 
-    let native_functions = sui_framework::natives::all_natives();
-    let move_vm = adapter::new_move_vm(native_functions.clone(), &protocol_config)
-        .expect("We defined natives to not fail here");
+    let native_functions = sui_framework::natives::all_natives(/* silent */ true);
+    // paranoid checks are a last line of defense for malicious code, no need to run them in genesis
+    let enable_move_vm_paranoid_checks = false;
+    let move_vm = adapter::new_move_vm(
+        native_functions.clone(),
+        &protocol_config,
+        enable_move_vm_paranoid_checks,
+    )
+    .expect("We defined natives to not fail here");
 
-    for (modules, dependencies) in modules {
+    for system_package in BuiltInFramework::iter_system_packages() {
         process_package(
             &mut store,
             &move_vm,
             genesis_ctx,
-            modules,
-            dependencies.to_owned(),
+            &system_package.modules(),
+            system_package.dependencies().to_vec(),
             &protocol_config,
         )
         .unwrap();
@@ -1835,7 +1826,10 @@ impl TokenDistributionScheduleBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{utils, ValidatorInfo};
+    use crate::{
+        node::{DEFAULT_COMMISSION_RATE, DEFAULT_VALIDATOR_GAS_PRICE},
+        utils, ValidatorInfo,
+    };
     use fastcrypto::traits::KeyPair;
     use sui_types::crypto::{
         generate_proof_of_possession, get_key_pair_from_rng, AccountKeyPair, AuthorityKeyPair,
@@ -1887,8 +1881,8 @@ mod test {
             worker_key: worker_key.public().clone(),
             account_address: SuiAddress::from(account_key.public()),
             network_key: network_key.public().clone(),
-            gas_price: ValidatorInfo::DEFAULT_GAS_PRICE,
-            commission_rate: ValidatorInfo::DEFAULT_COMMISSION_RATE,
+            gas_price: DEFAULT_VALIDATOR_GAS_PRICE,
+            commission_rate: DEFAULT_COMMISSION_RATE,
             network_address: utils::new_tcp_network_address(),
             p2p_address: utils::new_udp_network_address(),
             narwhal_primary_address: utils::new_udp_network_address(),
@@ -1927,10 +1921,15 @@ mod test {
             &protocol_config,
         );
 
-        let native_functions = sui_framework::natives::all_natives();
+        let enable_move_vm_paranoid_checks = false;
+        let native_functions = sui_framework::natives::all_natives(/* silent */ true);
         let move_vm = std::sync::Arc::new(
-            adapter::new_move_vm(native_functions, &protocol_config)
-                .expect("We defined natives to not fail here"),
+            adapter::new_move_vm(
+                native_functions,
+                &protocol_config,
+                enable_move_vm_paranoid_checks,
+            )
+            .expect("We defined natives to not fail here"),
         );
 
         let transaction_data = &genesis_transaction.data().intent_message().value;

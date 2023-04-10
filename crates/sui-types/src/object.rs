@@ -31,7 +31,6 @@ use crate::{
 };
 use sui_protocol_config::ProtocolConfig;
 
-pub const MAX_GAS_BUDGET_FOR_TESTING: u64 = 5_000_000_000;
 pub const GAS_VALUE_FOR_TESTING: u64 = 300_000_000_000_000;
 pub const OBJECT_START_VERSION: SequenceNumber = SequenceNumber::from_u64(1);
 
@@ -611,16 +610,17 @@ impl Object {
         ))
     }
 
-    pub fn new_package_for_testing<'p>(
+    pub fn new_package_for_testing(
         modules: &[CompiledModule],
         previous_transaction: TransactionDigest,
-        dependencies: impl IntoIterator<Item = &'p MovePackage>,
+        dependencies: impl IntoIterator<Item = MovePackage>,
     ) -> Result<Self, ExecutionError> {
+        let dependencies: Vec<_> = dependencies.into_iter().collect();
         Self::new_package(
             modules,
             previous_transaction,
             ProtocolConfig::get_for_max_version().max_move_package_size(),
-            dependencies,
+            &dependencies,
         )
     }
 
@@ -766,6 +766,14 @@ impl Object {
         }
     }
 
+    pub fn immutable_for_testing() -> Self {
+        thread_local! {
+            static IMMUTABLE_OBJECT_ID: ObjectID = ObjectID::random();
+        }
+
+        Self::immutable_with_id_for_testing(IMMUTABLE_OBJECT_ID.with(|id| *id))
+    }
+
     /// make a test shared object.
     pub fn shared_for_testing() -> Object {
         thread_local! {
@@ -903,21 +911,6 @@ pub fn generate_max_test_gas_objects_with_owner(count: u64, owner: SuiAddress) -
         .map(|_i| {
             let gas_object_id = ObjectID::random();
             Object::with_id_owner_gas_for_testing(gas_object_id, owner, coin_size)
-        })
-        .collect()
-}
-
-/// Make a few test gas objects with specific owners.
-pub fn generate_test_gas_objects_with_owner_list<O>(owners: O) -> Vec<Object>
-where
-    O: IntoIterator<Item = SuiAddress>,
-{
-    owners
-        .into_iter()
-        .enumerate()
-        .map(|(_, owner)| {
-            let gas_object_id = ObjectID::random();
-            Object::with_id_owner_for_testing(gas_object_id, owner)
         })
         .collect()
 }

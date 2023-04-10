@@ -14,7 +14,6 @@ use fastcrypto::encoding::Base58;
 use fastcrypto::encoding::Encoding;
 use fastcrypto::traits::KeyPair;
 use itertools::Itertools;
-use move_binary_format::compatibility::Compatibility;
 use move_binary_format::CompiledModule;
 use move_core_types::language_storage::ModuleId;
 use parking_lot::Mutex;
@@ -46,7 +45,7 @@ use sui_config::genesis::Genesis;
 use sui_config::node::{
     AuthorityStorePruningConfig, DBCheckpointConfig, ExpensiveSafetyCheckConfig,
 };
-use sui_framework::{MoveStdlib, SuiFramework, SuiSystem, SystemPackage};
+use sui_framework::BuiltInFramework;
 use sui_json_rpc_types::{
     Checkpoint, DevInspectResults, DryRunTransactionBlockResponse, EventFilter, SuiEvent,
     SuiMoveValue, SuiObjectDataFilter, SuiTransactionBlockData, SuiTransactionBlockEvents,
@@ -495,7 +494,7 @@ pub struct AuthorityState {
     db_checkpoint_config: DBCheckpointConfig,
 
     /// Config controlling what kind of expensive safety checks to perform.
-    _expensive_safety_check_config: ExpensiveSafetyCheckConfig,
+    expensive_safety_check_config: ExpensiveSafetyCheckConfig,
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
@@ -1069,10 +1068,13 @@ impl AuthorityState {
             epoch_store.protocol_config(),
         );
         let (kind, signer, _) = transaction.execution_parts();
+        // don't bother with paranoid checks in dry run
+        let enable_move_vm_paranoid_checks = false;
         let move_vm = Arc::new(
             adapter::new_move_vm(
                 epoch_store.native_functions().clone(),
                 epoch_store.protocol_config(),
+                enable_move_vm_paranoid_checks,
             )
             .expect("We defined natives to not fail here"),
         );
@@ -1100,12 +1102,6 @@ impl AuthorityState {
 
         // Returning empty vector here because we recalculate changes in the rpc layer.
         let balance_changes = Vec::new();
-
-        // Update the storage gas price
-        let reference_gas_price = epoch_store.reference_gas_price();
-        let TransactionEffects::V1(mut inner_effects) = effects;
-        inner_effects.gas_used.storage_cost *= reference_gas_price;
-        let effects = TransactionEffects::V1(inner_effects);
 
         Ok((
             DryRunTransactionBlockResponse {
@@ -1190,6 +1186,8 @@ impl AuthorityState {
             adapter::new_move_vm(
                 epoch_store.native_functions().clone(),
                 epoch_store.protocol_config(),
+                self.expensive_safety_check_config
+                    .enable_move_vm_paranoid_checks(),
             )
             .expect("We defined natives to not fail here"),
         );
@@ -1217,6 +1215,12 @@ impl AuthorityState {
             execution_result,
             &module_cache,
         )
+    }
+
+    // Only used for testing because of how epoch store is loaded.
+    pub fn reference_gas_price_for_testing(&self) -> Result<u64, anyhow::Error> {
+        let epoch_store = self.epoch_store_for_testing();
+        Ok(epoch_store.reference_gas_price())
     }
 
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> SuiResult<bool> {
@@ -1669,7 +1673,7 @@ impl AuthorityState {
             _objects_pruner,
             _authority_per_epoch_pruner,
             db_checkpoint_config: db_checkpoint_config.clone(),
-            _expensive_safety_check_config: expensive_safety_check_config,
+            expensive_safety_check_config,
         });
 
         // Start a task to execute ready certificates.
@@ -1731,6 +1735,7 @@ impl AuthorityState {
             store.clone(),
             cache_metrics,
             signature_verifier_metrics,
+            &ExpensiveSafetyCheckConfig::default(),
         );
 
         let epochs = Arc::new(CommitteeStore::new(
@@ -1835,7 +1840,7 @@ impl AuthorityState {
         epoch_start_configuration: EpochStartConfiguration,
         checkpoint_executor: &CheckpointExecutor,
         accumulator: Arc<StateAccumulator>,
-        enable_state_consistency_check: bool,
+        expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
     ) -> SuiResult<Arc<AuthorityPerEpochStore>> {
         Self::check_protocol_version(
             supported_protocol_versions,
@@ -1853,7 +1858,7 @@ impl AuthorityState {
             cur_epoch_store,
             checkpoint_executor,
             accumulator,
-            enable_state_consistency_check,
+            expensive_safety_check_config.enable_state_consistency_check(),
         );
         if let Some(checkpoint_path) = &self.db_checkpoint_config.checkpoint_path {
             if self
@@ -1868,7 +1873,12 @@ impl AuthorityState {
         }
         let new_epoch = new_committee.epoch;
         let new_epoch_store = self
-            .reopen_epoch_db(cur_epoch_store, new_committee, epoch_start_configuration)
+            .reopen_epoch_db(
+                cur_epoch_store,
+                new_committee,
+                epoch_start_configuration,
+                expensive_safety_check_config,
+            )
             .await?;
         assert_eq!(new_epoch_store.epoch(), new_epoch);
         self.transaction_manager.reconfigure(new_epoch);
@@ -3003,121 +3013,26 @@ impl AuthorityState {
         &self,
         max_binary_format_version: u32,
     ) -> Vec<ObjectRef> {
-        let Some(move_stdlib) = self.compare_system_package(
-            MoveStdlib::ID,
-            MoveStdlib::as_modules(),
-            MoveStdlib::transitive_dependencies(),
-            max_binary_format_version,
-        ).await else {
-            return vec![];
-        };
+        let mut results = vec![];
+        for system_package in BuiltInFramework::iter_system_packages() {
+            let modules = system_package.modules().to_vec();
+            // In simtests, we could override the current built-in framework packages.
+            #[cfg(msim)]
+            let modules = framework_injection::get_override_modules(system_package.id(), self.name)
+                .unwrap_or(modules);
 
-        let Some(sui_framework) = self.compare_system_package(
-            SuiFramework::ID,
-            SuiFramework::as_modules(),
-            SuiFramework::transitive_dependencies(),
-            max_binary_format_version,
-        ).await else {
-            return vec![];
-        };
-
-        let Some(sui_system) = self.compare_system_package(
-            SuiSystem::ID,
-            &sui_system_injection::get_modules(self.name),
-            SuiSystem::transitive_dependencies(),
-            max_binary_format_version,
-        ).await else {
-            return vec![];
-        };
-
-        vec![move_stdlib, sui_framework, sui_system]
-    }
-
-    /// Check whether the framework defined by `modules` is compatible with the framework that is
-    /// already on-chain at `id`.
-    ///
-    /// - Returns `None` if the current package at `id` cannot be loaded, or the compatibility check
-    ///   fails (This is grounds not to upgrade).
-    /// - Panics if the object at `id` can be loaded but is not a package -- this is an invariant
-    ///   violation.
-    /// - Returns the digest of the current framework (and version) if it is equivalent to the new
-    ///   framework (indicates support for a protocol upgrade without a framework upgrade).
-    /// - Returns the digest of the new framework (and version) if it is compatible (indicates
-    ///   support for a protocol upgrade with a framework upgrade).
-    async fn compare_system_package(
-        &self,
-        id: ObjectID,
-        modules: &[CompiledModule],
-        dependencies: Vec<ObjectID>,
-        max_binary_format_version: u32,
-    ) -> Option<ObjectRef> {
-        let cur_object = match self.get_object(&id).await {
-            Ok(Some(cur_object)) => cur_object,
-
-            Ok(None) => {
-                error!("No framework package at {id}");
-                return None;
-            }
-
-            Err(e) => {
-                error!("Error loading framework object at {id}: {e:?}");
-                return None;
-            }
-        };
-
-        let cur_ref = cur_object.compute_object_reference();
-        let cur_pkg = cur_object
-            .data
-            .try_as_package()
-            .expect("Framework not package");
-
-        let mut new_object = Object::new_system_package(
-            modules,
-            // Start at the same version as the current package, and increment if compatibility is
-            // successful
-            cur_object.version(),
-            dependencies,
-            cur_object.previous_transaction,
-        );
-
-        if cur_ref == new_object.compute_object_reference() {
-            return Some(cur_ref);
-        }
-
-        let compatibility = Compatibility {
-            check_struct_and_pub_function_linking: true,
-            check_struct_layout: true,
-            check_friend_linking: false,
-            check_private_entry_linking: true,
-        };
-
-        let new_pkg = new_object
-            .data
-            .try_as_package_mut()
-            .expect("Created as package");
-
-        let cur_normalized = match cur_pkg.normalize(max_binary_format_version) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Could not normalize existing package: {e:?}");
-                return None;
-            }
-        };
-        let mut new_normalized = new_pkg.normalize(max_binary_format_version).ok()?;
-
-        for (name, cur_module) in cur_normalized {
-            let Some(new_module) = new_normalized.remove(&name) else {
-                return None;
+            let Some(obj_ref) = sui_framework::compare_system_package(
+                self.database.as_ref(),
+                system_package.id(),
+                &modules,
+                system_package.dependencies().to_vec(),
+                max_binary_format_version,
+            ).await else {
+                return vec![];
             };
-
-            if let Err(e) = compatibility.check(&cur_module, &new_module) {
-                error!("Compatibility check failed, for new version of {id}: {e:?}");
-                return None;
-            }
+            results.push(obj_ref);
         }
-
-        new_pkg.increment_version();
-        Some(new_object.compute_object_reference())
+        results
     }
 
     /// Return the new versions, module bytes, and dependencies for the packages that have been
@@ -3142,32 +3057,22 @@ impl AuthorityState {
         let objects = self.get_objects(&ids).await.expect("read cannot fail");
 
         let mut res = Vec::with_capacity(system_packages.len());
-        for (system_package, object) in system_packages.into_iter().zip(objects.iter()) {
+        for (system_package_ref, object) in system_packages.into_iter().zip(objects.iter()) {
             let cur_object = object
                 .as_ref()
-                .unwrap_or_else(|| panic!("system package {:?} must exist", system_package.0));
+                .unwrap_or_else(|| panic!("system package {:?} must exist", system_package_ref.0));
 
-            if cur_object.compute_object_reference() == system_package {
+            if cur_object.compute_object_reference() == system_package_ref {
                 // Skip this one because it doesn't need to be upgraded.
-                info!("Framework {} does not need updating", system_package.0);
+                info!("Framework {} does not need updating", system_package_ref.0);
                 continue;
             }
 
-            let (bytes, dependencies) = match system_package.0 {
-                MoveStdlib::ID => (
-                    MoveStdlib::as_bytes(),
-                    MoveStdlib::transitive_dependencies(),
-                ),
-                SuiFramework::ID => (
-                    SuiFramework::as_bytes(),
-                    SuiFramework::transitive_dependencies(),
-                ),
-                SuiSystem::ID => (
-                    sui_system_injection::get_bytes(self.name),
-                    SuiSystem::transitive_dependencies(),
-                ),
-                _ => panic!("Unrecognised framework: {}", system_package.0),
-            };
+            let system_package = BuiltInFramework::get_package_by_id(&system_package_ref.0);
+            let bytes = system_package.bytes().to_vec();
+            #[cfg(msim)]
+            let bytes = framework_injection::get_override_bytes(&system_package_ref.0, self.name)
+                .unwrap_or(bytes);
 
             let modules: Vec<_> = bytes
                 .iter()
@@ -3179,18 +3084,24 @@ impl AuthorityState {
 
             let new_object = Object::new_system_package(
                 &modules,
-                system_package.1,
-                dependencies.clone(),
+                system_package_ref.1,
+                system_package.dependencies().to_vec(),
                 cur_object.previous_transaction,
             );
 
             let new_ref = new_object.compute_object_reference();
-            if new_ref != system_package {
-                error!("Framework mismatch -- binary: {new_ref:?}\n  upgrade: {system_package:?}");
+            if new_ref != system_package_ref {
+                error!(
+                    "Framework mismatch -- binary: {new_ref:?}\n  upgrade: {system_package_ref:?}"
+                );
                 return None;
             }
 
-            res.push((system_package.1, bytes, dependencies));
+            res.push((
+                system_package_ref.1,
+                bytes,
+                system_package.dependencies().to_vec(),
+            ));
         }
 
         Some(res)
@@ -3452,6 +3363,7 @@ impl AuthorityState {
         cur_epoch_store: &AuthorityPerEpochStore,
         new_committee: Committee,
         epoch_start_configuration: EpochStartConfiguration,
+        expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
     ) -> SuiResult<Arc<AuthorityPerEpochStore>> {
         let new_epoch = new_committee.epoch;
         info!(new_epoch = ?new_epoch, "re-opening AuthorityEpochTables for new epoch");
@@ -3468,6 +3380,7 @@ impl AuthorityState {
             new_committee,
             epoch_start_configuration,
             self.db(),
+            expensive_safety_check_config,
         );
         self.epoch_store.store(new_epoch_store.clone());
         cur_epoch_store.epoch_terminated().await;
@@ -3608,25 +3521,27 @@ mod tests {
 }
 
 #[cfg(msim)]
-pub mod sui_system_injection {
+pub mod framework_injection {
+    use move_binary_format::CompiledModule;
     use std::cell::RefCell;
+    use std::collections::BTreeMap;
+    use sui_types::base_types::{AuthorityName, ObjectID};
 
-    use super::*;
+    type FrameworkOverrideConfig = BTreeMap<ObjectID, PackageOverrideConfig>;
 
     // Thread local cache because all simtests run in a single unique thread.
     thread_local! {
-        static OVERRIDE: RefCell<FrameworkOverrideConfig> = RefCell::new(FrameworkOverrideConfig::Default);
+        static OVERRIDE: RefCell<FrameworkOverrideConfig> = RefCell::new(FrameworkOverrideConfig::default());
     }
 
     type Framework = Vec<CompiledModule>;
 
-    type FrameworkUpgradeCallback =
+    pub type PackageUpgradeCallback =
         Box<dyn Fn(AuthorityName) -> Option<Framework> + Send + Sync + 'static>;
 
-    enum FrameworkOverrideConfig {
-        Default,
+    enum PackageOverrideConfig {
         Global(Framework),
-        PerValidator(FrameworkUpgradeCallback),
+        PerValidator(PackageUpgradeCallback),
     }
 
     fn compiled_modules_to_bytes(modules: &[CompiledModule]) -> Vec<Vec<u8>> {
@@ -3640,46 +3555,42 @@ pub mod sui_system_injection {
             .collect()
     }
 
-    pub fn set_override(modules: Vec<CompiledModule>) {
-        OVERRIDE.with(|bs| *bs.borrow_mut() = FrameworkOverrideConfig::Global(modules));
+    pub fn set_override(package_id: ObjectID, modules: Vec<CompiledModule>) {
+        OVERRIDE.with(|bs| {
+            bs.borrow_mut()
+                .insert(package_id, PackageOverrideConfig::Global(modules))
+        });
     }
 
-    pub fn set_override_cb(func: FrameworkUpgradeCallback) {
-        OVERRIDE.with(|bs| *bs.borrow_mut() = FrameworkOverrideConfig::PerValidator(func));
+    pub fn set_override_cb(package_id: ObjectID, func: PackageUpgradeCallback) {
+        OVERRIDE.with(|bs| {
+            bs.borrow_mut()
+                .insert(package_id, PackageOverrideConfig::PerValidator(func))
+        });
     }
 
-    pub fn get_bytes(name: AuthorityName) -> Vec<Vec<u8>> {
-        OVERRIDE.with(|cfg| match &*cfg.borrow() {
-            FrameworkOverrideConfig::Default => SuiSystem::as_bytes(),
-            FrameworkOverrideConfig::Global(framework) => compiled_modules_to_bytes(framework),
-            FrameworkOverrideConfig::PerValidator(func) => func(name)
-                .map(|fw| compiled_modules_to_bytes(&fw))
-                .unwrap_or_else(SuiSystem::as_bytes),
+    pub fn get_override_bytes(package_id: &ObjectID, name: AuthorityName) -> Option<Vec<Vec<u8>>> {
+        OVERRIDE.with(|cfg| {
+            cfg.borrow().get(package_id).and_then(|entry| match entry {
+                PackageOverrideConfig::Global(framework) => {
+                    Some(compiled_modules_to_bytes(framework))
+                }
+                PackageOverrideConfig::PerValidator(func) => {
+                    func(name).map(|fw| compiled_modules_to_bytes(&fw))
+                }
+            })
         })
     }
 
-    pub fn get_modules(name: AuthorityName) -> Vec<CompiledModule> {
-        OVERRIDE.with(|cfg| match &*cfg.borrow() {
-            FrameworkOverrideConfig::Default => SuiSystem::as_modules().to_owned(),
-            FrameworkOverrideConfig::Global(framework) => framework.clone(),
-            FrameworkOverrideConfig::PerValidator(func) => {
-                func(name).unwrap_or_else(|| SuiSystem::as_modules().to_owned())
-            }
+    pub fn get_override_modules(
+        package_id: &ObjectID,
+        name: AuthorityName,
+    ) -> Option<Vec<CompiledModule>> {
+        OVERRIDE.with(|cfg| {
+            cfg.borrow().get(package_id).and_then(|entry| match entry {
+                PackageOverrideConfig::Global(framework) => Some(framework.clone()),
+                PackageOverrideConfig::PerValidator(func) => func(name),
+            })
         })
-    }
-}
-
-#[cfg(not(msim))]
-pub mod sui_system_injection {
-    use move_binary_format::CompiledModule;
-
-    use super::*;
-
-    pub fn get_bytes(_name: AuthorityName) -> Vec<Vec<u8>> {
-        SuiSystem::as_bytes()
-    }
-
-    pub fn get_modules(_name: AuthorityName) -> Vec<CompiledModule> {
-        SuiSystem::as_modules().to_owned()
     }
 }
