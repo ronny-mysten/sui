@@ -9,6 +9,7 @@ import { CheckpointTransactionBlocks } from './CheckpointTransactionBlocks';
 
 import { Banner } from '~/ui/Banner';
 import { DescriptionList, DescriptionItem } from '~/ui/DescriptionList';
+import { EpochLink } from '~/ui/InternalLink';
 import { LoadingSpinner } from '~/ui/LoadingSpinner';
 import { PageHeader } from '~/ui/PageHeader';
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '~/ui/Tabs';
@@ -39,8 +40,7 @@ export default function CheckpointDetail() {
                 <TabGroup as="div" size="lg">
                     <TabList>
                         <Tab>Details</Tab>
-                        {/* TODO: Get validator signatures */}
-                        {/* <Tab>Signatures</Tab> */}
+                        <Tab>Signatures</Tab>
                     </TabList>
                     <TabPanels>
                         <TabPanel>
@@ -54,12 +54,7 @@ export default function CheckpointDetail() {
                                     </Text>
                                 </DescriptionItem>
                                 <DescriptionItem title="Epoch">
-                                    <Text
-                                        variant="p1/medium"
-                                        color="steel-darker"
-                                    >
-                                        {data.epoch}
-                                    </Text>
+                                    <EpochLink epoch={data.epoch} />
                                 </DescriptionItem>
                                 <DescriptionItem title="Checkpoint Timestamp">
                                     <Text
@@ -76,24 +71,26 @@ export default function CheckpointDetail() {
                             </DescriptionList>
                         </TabPanel>
                         <TabPanel>
-                            {/* TODO: Get validator signatures */}
-                            {/* <DescriptionList>
-                                {contentsQuery.data?.user_signatures.map(
-                                    ([signature]) => (
+                            <TabGroup>
+                                <TabList>
+                                    <Tab>Aggregated Validator Signature</Tab>
+                                </TabList>
+                                <TabPanels>
+                                    <DescriptionList>
                                         <DescriptionItem
-                                            key={signature}
+                                            key={data.validatorSignature}
                                             title="Signature"
                                         >
                                             <Text
                                                 variant="p1/medium"
                                                 color="steel-darker"
                                             >
-                                                {signature}
+                                                {data.validatorSignature}
                                             </Text>
                                         </DescriptionItem>
-                                    )
-                                )}
-                            </DescriptionList> */}
+                                    </DescriptionList>
+                                </TabPanels>
+                            </TabGroup>
                         </TabPanel>
                     </TabPanels>
                 </TabGroup>
