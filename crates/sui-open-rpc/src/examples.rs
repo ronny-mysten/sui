@@ -86,6 +86,9 @@ impl RpcExampleProvider {
             self.get_events(),
             self.execute_transaction_example(),
             self.get_checkpoint_example(),
+            self.get_checkpoints(),
+            self.sui_dev_inspect_transaction_block(),
+            self.sui_dry_run_transaction_block(),
         ]
         .into_iter()
         .map(|example| (example.function_name, example.examples))
@@ -304,6 +307,46 @@ impl RpcExampleProvider {
             vec![ExamplePairing::new(
                 "Get checkpoint",
                 vec![("id", json!(CheckpointId::SequenceNumber(1000)))],
+                json!(result),
+            )],
+        )
+    }
+
+    fn get_checkpoints(&mut self) -> Examples {
+        
+        let limit = 3;
+        let descending_order = true;
+        let result = (0..4)
+        .map(|_| Checkpoint {
+            epoch: 5000,
+            sequence_number: self.rng.gen_range(1004..1843),
+            digest: CheckpointDigest::new(self.rng.gen()),
+            network_total_transactions: 792385,
+            previous_digest: Some(CheckpointDigest::new(self.rng.gen())),
+            epoch_rolling_gas_cost_summary: Default::default(),
+            timestamp_ms: 1676911928,
+            end_of_epoch_data: None,
+            transactions: vec![TransactionDigest::new(self.rng.gen())],
+            checkpoint_commitments: vec![],
+            validator_signature: AggregateAuthoritySignature::default(),
+        })
+        .collect::<Vec<_>>();
+
+        Examples::new(
+            "sui_getCheckpoints",
+            vec![ExamplePairing::new(
+                "Get all checkpoints.",
+                vec![(
+                        "cursor", json!(ObjectID::new(self.rng.gen())),
+                    ),
+                    (
+                        "limit", json!(limit),
+                    ),
+                    (
+                        "descending_order",
+                        json!(descending_order),
+                    ),
+                    ],
                 json!(result),
             )],
         )
@@ -571,6 +614,57 @@ impl RpcExampleProvider {
                 "Return the Events emitted by a transaction",
                 vec![("transaction_digest", json!(result.digest))],
                 json!(page),
+            )],
+        )
+    }
+
+    fn sui_dry_run_transaction_block(&mut self) -> Examples {
+        let (data, _, _, _, result) = self.get_transfer_data_response();
+        let tx_bytes = TransactionBlockBytes::from_data(data).unwrap();
+
+        Examples::new(
+            "sui_dryRunTransactionBlock",
+            vec![ExamplePairing::new(
+                "Testing a new example.",
+                vec![
+                    ("tx_bytes", json!(tx_bytes)),
+                ],
+                json!(result),
+            )],
+        )
+    }
+
+    fn sui_dev_inspect_transaction_block(&mut self) -> Examples {
+        let (data, _, _, _, result) = self.get_transfer_data_response();
+        let tx_bytes = TransactionBlockBytes::from_data(data).unwrap();
+        let gas_price = 10;
+        let epoch = 7;
+        let sender = SuiAddress::from(ObjectID::new(self.rng.gen()));
+
+        Examples::new(
+            "sui_devInspectTransactionBlock",
+            vec![ExamplePairing::new(
+                "Execute a transaction with serialized signatures.",
+                vec![
+                    (
+                        "sender_address",
+                        json!(sender),
+                    ),
+                    (
+                        "tx_bytes", 
+                        json!(tx_bytes.tx_bytes)
+                    ),
+                    (
+                        "gas_price",
+                        json!(gas_price),
+                    ),
+                    (
+                        "epoch",
+                        json!(epoch),
+                    ),
+                    
+                ],
+                json!(result),
             )],
         )
     }

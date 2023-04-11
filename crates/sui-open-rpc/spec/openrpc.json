@@ -60,7 +60,149 @@
         "schema": {
           "$ref": "#/components/schemas/DevInspectResults"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Execute a transaction with serialized signatures.",
+          "params": [
+            {
+              "name": "sender_address",
+              "value": "0xa396f7f6b1482bdcd65a673d111e49286c527fab7c2d096141f5975e3c6bd5c9"
+            },
+            {
+              "name": "tx_bytes",
+              "value": "AAACACCN3iZHJKtRohx1LoHFGyBjV9goJmw2tThlu1/kih84jwEAWpfQ2N/mTwn3CfBsMgiJlJIw5nIES7KwlUrlk1OSxy8CAAAAAAAAACAD1puriLuwkXz6dyuvPoN4kUE+lLGRWwj7QRgbyVIAKgEBAQEBAAEAADvT5p4110qQQnaJwvBkD+roMsqsaLLMtFdh4K+1SrS7AaCODl39Vm6XeWj6gZN5GdoClMu6HUmA+68KTb+8w5AzAgAAAAAAAAAg2BdWYpf53pVwPjJve2xbsG4vacz0QRMI55WVA0t8Vq470+aeNddKkEJ2icLwZA/q6DLKrGiyzLRXYeCvtUq0uwoAAAAAAAAAAC0xAQAAAAAA"
+            },
+            {
+              "name": "gas_price",
+              "value": 10
+            },
+            {
+              "name": "epoch",
+              "value": 7
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "digest": "3i5nJcbyEqLgxajwrqBEFr6s81n6LDbsuvuCJJaCnuZ2",
+              "transaction": {
+                "data": {
+                  "messageVersion": "v1",
+                  "transaction": {
+                    "kind": "ProgrammableTransaction",
+                    "inputs": [
+                      {
+                        "type": "pure",
+                        "valueType": "address",
+                        "value": "0x8dde264724ab51a21c752e81c51b206357d828266c36b53865bb5fe48a1f388f"
+                      },
+                      {
+                        "type": "object",
+                        "objectType": "immOrOwnedObject",
+                        "objectId": "0x5a97d0d8dfe64f09f709f06c320889949230e672044bb2b0954ae5935392c72f",
+                        "version": "2",
+                        "digest": "Fz2NJJKJoMCUWCVcTjmi7YQ1ZQ2X2Cnux3muq5jVuFo"
+                      }
+                    ],
+                    "transactions": [
+                      {
+                        "TransferObjects": [
+                          [
+                            {
+                              "Input": 1
+                            }
+                          ],
+                          {
+                            "Input": 0
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "sender": "0x3bd3e69e35d74a90427689c2f0640feae832caac68b2ccb45761e0afb54ab4bb",
+                  "gasData": {
+                    "payment": [
+                      {
+                        "objectId": "0xa08e0e5dfd566e977968fa81937919da0294cbba1d4980fbaf0a4dbfbcc39033",
+                        "version": 2,
+                        "digest": "FYXhk71VrrdcGNPcgsWtNsrPc2KHu2Y7n18wTqCAggS1"
+                      }
+                    ],
+                    "owner": "0x3bd3e69e35d74a90427689c2f0640feae832caac68b2ccb45761e0afb54ab4bb",
+                    "price": "10",
+                    "budget": "20000000"
+                  }
+                },
+                "txSignatures": [
+                  "AA4uNrOTmBMu2tNT25298/Xu3ocSjBMci8CDjZWDeIFyu7bMVoZdGhzYjgu6cgpqAAxyg/4z7sAoBehXrw/GSgyzQsZhfQhGQrpsShCqsWjlIejc9IbFrh1KxlJ5DV+Xcw=="
+                ]
+              },
+              "rawTransaction": "AQAAAAAAAgAgjd4mRySrUaIcdS6BxRsgY1fYKCZsNrU4Zbtf5IofOI8BAFqX0Njf5k8J9wnwbDIIiZSSMOZyBEuysJVK5ZNTkscvAgAAAAAAAAAgA9abq4i7sJF8+ncrrz6DeJFBPpSxkVsI+0EYG8lSACoBAQEBAQABAAA70+aeNddKkEJ2icLwZA/q6DLKrGiyzLRXYeCvtUq0uwGgjg5d/VZul3lo+oGTeRnaApTLuh1JgPuvCk2/vMOQMwIAAAAAAAAAINgXVmKX+d6VcD4yb3tsW7BuL2nM9EETCOeVlQNLfFauO9PmnjXXSpBCdonC8GQP6ugyyqxossy0V2Hgr7VKtLsKAAAAAAAAAAAtMQEAAAAAAAFhAA4uNrOTmBMu2tNT25298/Xu3ocSjBMci8CDjZWDeIFyu7bMVoZdGhzYjgu6cgpqAAxyg/4z7sAoBehXrw/GSgyzQsZhfQhGQrpsShCqsWjlIejc9IbFrh1KxlJ5DV+Xcw==",
+              "effects": {
+                "messageVersion": "v1",
+                "status": {
+                  "status": "success"
+                },
+                "executedEpoch": "0",
+                "gasUsed": {
+                  "computationCost": "100",
+                  "storageCost": "100",
+                  "storageRebate": "10",
+                  "nonRefundableStorageFee": "0"
+                },
+                "transactionDigest": "A4eZtwsbz2r7CzDzNEPei5PaxmKumAkr1ERDxY3qrGCh",
+                "mutated": [
+                  {
+                    "owner": {
+                      "AddressOwner": "0x3bd3e69e35d74a90427689c2f0640feae832caac68b2ccb45761e0afb54ab4bb"
+                    },
+                    "reference": {
+                      "objectId": "0xa08e0e5dfd566e977968fa81937919da0294cbba1d4980fbaf0a4dbfbcc39033",
+                      "version": 2,
+                      "digest": "FYXhk71VrrdcGNPcgsWtNsrPc2KHu2Y7n18wTqCAggS1"
+                    }
+                  },
+                  {
+                    "owner": {
+                      "AddressOwner": "0x8dde264724ab51a21c752e81c51b206357d828266c36b53865bb5fe48a1f388f"
+                    },
+                    "reference": {
+                      "objectId": "0x5a97d0d8dfe64f09f709f06c320889949230e672044bb2b0954ae5935392c72f",
+                      "version": 2,
+                      "digest": "Fz2NJJKJoMCUWCVcTjmi7YQ1ZQ2X2Cnux3muq5jVuFo"
+                    }
+                  }
+                ],
+                "gasObject": {
+                  "owner": {
+                    "ObjectOwner": "0x3bd3e69e35d74a90427689c2f0640feae832caac68b2ccb45761e0afb54ab4bb"
+                  },
+                  "reference": {
+                    "objectId": "0xa08e0e5dfd566e977968fa81937919da0294cbba1d4980fbaf0a4dbfbcc39033",
+                    "version": 2,
+                    "digest": "FYXhk71VrrdcGNPcgsWtNsrPc2KHu2Y7n18wTqCAggS1"
+                  }
+                },
+                "eventsDigest": "6PuemjbkLycKVgRM75H73CWDMBSyLvZ6qUQewmcWmUMe"
+              },
+              "objectChanges": [
+                {
+                  "type": "transferred",
+                  "sender": "0x3bd3e69e35d74a90427689c2f0640feae832caac68b2ccb45761e0afb54ab4bb",
+                  "recipient": {
+                    "AddressOwner": "0x8dde264724ab51a21c752e81c51b206357d828266c36b53865bb5fe48a1f388f"
+                  },
+                  "objectType": "0x2::example::Object",
+                  "objectId": "0x5a97d0d8dfe64f09f709f06c320889949230e672044bb2b0954ae5935392c72f",
+                  "version": "2",
+                  "digest": "8fg3zzuq8jqTPLAETP54fEDAgDogq4yvXstMKycKrURN"
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "name": "sui_dryRunTransactionBlock",
@@ -85,7 +227,162 @@
         "schema": {
           "$ref": "#/components/schemas/DryRunTransactionBlockResponse"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Testing a new example.",
+          "params": [
+            {
+              "name": "tx_bytes",
+              "value": {
+                "txBytes": "AAACACA0vibmkVLSwuhtipvb0kKzJWTNMacc+YM2CbERQ22PDwEAR7f4uZJ+w/iXWh3L+bJVZIYcXgVWBbK7EZn69lOodx4CAAAAAAAAACBQLpC+QyIxtt7hrzMQDw5vfnaWeNBZdhv/io85RGQuTAEBAQEBAAEAAN5dQCyl+L/53HUF/IlixbMU6dUfLC5j/ZQPq/yYJgnlAUSJMLyVoDafrUOphwouWHiRgl3r/1Qc9OCLXF9ylv+YAgAAAAAAAAAgQObwsYWvk5hM3ozzhwMCwGKUQwP6t7R1tyP3LqcHLdveXUAspfi/+dx1BfyJYsWzFOnVHywuY/2UD6v8mCYJ5QoAAAAAAAAAAC0xAQAAAAAA",
+                "gas": [
+                  {
+                    "objectId": "0x448930bc95a0369fad43a9870a2e587891825debff541cf4e08b5c5f7296ff98",
+                    "version": 2,
+                    "digest": "5NMLZqfEbcXkeeWFxkKVVAQzGFzeNSy7DixPvXpHT1LW"
+                  }
+                ],
+                "inputObjects": [
+                  {
+                    "ImmOrOwnedMoveObject": {
+                      "objectId": "0x47b7f8b9927ec3f8975a1dcbf9b25564861c5e055605b2bb1199faf653a8771e",
+                      "version": 2,
+                      "digest": "6PzoK9qekAmiWGK3YV3JskCsTQB4U6uWb7JUGZCeRnaF"
+                    }
+                  },
+                  {
+                    "ImmOrOwnedMoveObject": {
+                      "objectId": "0x448930bc95a0369fad43a9870a2e587891825debff541cf4e08b5c5f7296ff98",
+                      "version": 2,
+                      "digest": "5NMLZqfEbcXkeeWFxkKVVAQzGFzeNSy7DixPvXpHT1LW"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "digest": "A7VPC29d5EXq45tWonRUyuWnQu7we1ve2CjYx1PFXyo1",
+              "transaction": {
+                "data": {
+                  "messageVersion": "v1",
+                  "transaction": {
+                    "kind": "ProgrammableTransaction",
+                    "inputs": [
+                      {
+                        "type": "pure",
+                        "valueType": "address",
+                        "value": "0x34be26e69152d2c2e86d8a9bdbd242b32564cd31a71cf9833609b111436d8f0f"
+                      },
+                      {
+                        "type": "object",
+                        "objectType": "immOrOwnedObject",
+                        "objectId": "0x47b7f8b9927ec3f8975a1dcbf9b25564861c5e055605b2bb1199faf653a8771e",
+                        "version": "2",
+                        "digest": "6PzoK9qekAmiWGK3YV3JskCsTQB4U6uWb7JUGZCeRnaF"
+                      }
+                    ],
+                    "transactions": [
+                      {
+                        "TransferObjects": [
+                          [
+                            {
+                              "Input": 1
+                            }
+                          ],
+                          {
+                            "Input": 0
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "sender": "0xde5d402ca5f8bff9dc7505fc8962c5b314e9d51f2c2e63fd940fabfc982609e5",
+                  "gasData": {
+                    "payment": [
+                      {
+                        "objectId": "0x448930bc95a0369fad43a9870a2e587891825debff541cf4e08b5c5f7296ff98",
+                        "version": 2,
+                        "digest": "5NMLZqfEbcXkeeWFxkKVVAQzGFzeNSy7DixPvXpHT1LW"
+                      }
+                    ],
+                    "owner": "0xde5d402ca5f8bff9dc7505fc8962c5b314e9d51f2c2e63fd940fabfc982609e5",
+                    "price": "10",
+                    "budget": "20000000"
+                  }
+                },
+                "txSignatures": [
+                  "AJ3iVlpv67WOfO7HDW64OS38leH5+tRYYvsZS2JX4Ko9i//i7AmgG7JevXqDLfEHkKw4ZCEyvFmOqLIQqJ7ozQgRoZJBjH2rAs5sI+5+b3nP4soplWx89UsBk1Y25txXBw=="
+                ]
+              },
+              "rawTransaction": "AQAAAAAAAgAgNL4m5pFS0sLobYqb29JCsyVkzTGnHPmDNgmxEUNtjw8BAEe3+LmSfsP4l1ody/myVWSGHF4FVgWyuxGZ+vZTqHceAgAAAAAAAAAgUC6QvkMiMbbe4a8zEA8Ob352lnjQWXYb/4qPOURkLkwBAQEBAQABAADeXUAspfi/+dx1BfyJYsWzFOnVHywuY/2UD6v8mCYJ5QFEiTC8laA2n61DqYcKLlh4kYJd6/9UHPTgi1xfcpb/mAIAAAAAAAAAIEDm8LGFr5OYTN6M84cDAsBilEMD+re0dbcj9y6nBy3b3l1ALKX4v/ncdQX8iWLFsxTp1R8sLmP9lA+r/JgmCeUKAAAAAAAAAAAtMQEAAAAAAAFhAJ3iVlpv67WOfO7HDW64OS38leH5+tRYYvsZS2JX4Ko9i//i7AmgG7JevXqDLfEHkKw4ZCEyvFmOqLIQqJ7ozQgRoZJBjH2rAs5sI+5+b3nP4soplWx89UsBk1Y25txXBw==",
+              "effects": {
+                "messageVersion": "v1",
+                "status": {
+                  "status": "success"
+                },
+                "executedEpoch": "0",
+                "gasUsed": {
+                  "computationCost": "100",
+                  "storageCost": "100",
+                  "storageRebate": "10",
+                  "nonRefundableStorageFee": "0"
+                },
+                "transactionDigest": "2zDK7YqF9HMvBfKyt3WradWrB1xttimLiuQhehPE3d4J",
+                "mutated": [
+                  {
+                    "owner": {
+                      "AddressOwner": "0xde5d402ca5f8bff9dc7505fc8962c5b314e9d51f2c2e63fd940fabfc982609e5"
+                    },
+                    "reference": {
+                      "objectId": "0x448930bc95a0369fad43a9870a2e587891825debff541cf4e08b5c5f7296ff98",
+                      "version": 2,
+                      "digest": "5NMLZqfEbcXkeeWFxkKVVAQzGFzeNSy7DixPvXpHT1LW"
+                    }
+                  },
+                  {
+                    "owner": {
+                      "AddressOwner": "0x34be26e69152d2c2e86d8a9bdbd242b32564cd31a71cf9833609b111436d8f0f"
+                    },
+                    "reference": {
+                      "objectId": "0x47b7f8b9927ec3f8975a1dcbf9b25564861c5e055605b2bb1199faf653a8771e",
+                      "version": 2,
+                      "digest": "6PzoK9qekAmiWGK3YV3JskCsTQB4U6uWb7JUGZCeRnaF"
+                    }
+                  }
+                ],
+                "gasObject": {
+                  "owner": {
+                    "ObjectOwner": "0xde5d402ca5f8bff9dc7505fc8962c5b314e9d51f2c2e63fd940fabfc982609e5"
+                  },
+                  "reference": {
+                    "objectId": "0x448930bc95a0369fad43a9870a2e587891825debff541cf4e08b5c5f7296ff98",
+                    "version": 2,
+                    "digest": "5NMLZqfEbcXkeeWFxkKVVAQzGFzeNSy7DixPvXpHT1LW"
+                  }
+                },
+                "eventsDigest": "EyDgqgYAZj6EnCjBt6Sw1W9TQjJhAYPZAUDxpVvjGs5T"
+              },
+              "objectChanges": [
+                {
+                  "type": "transferred",
+                  "sender": "0xde5d402ca5f8bff9dc7505fc8962c5b314e9d51f2c2e63fd940fabfc982609e5",
+                  "recipient": {
+                    "AddressOwner": "0x34be26e69152d2c2e86d8a9bdbd242b32564cd31a71cf9833609b111436d8f0f"
+                  },
+                  "objectType": "0x2::example::Object",
+                  "objectId": "0x47b7f8b9927ec3f8975a1dcbf9b25564861c5e055605b2bb1199faf653a8771e",
+                  "version": "2",
+                  "digest": "4UdPuQUQQmBU6aQknQA6RJ93DD2ZbkpkkjJrZXWNxXM3"
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "name": "sui_executeTransactionBlock",
@@ -386,7 +683,107 @@
         "schema": {
           "$ref": "#/components/schemas/Page_for_Checkpoint_and_BigInt_for_uint64"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Get all checkpoints.",
+          "params": [
+            {
+              "name": "cursor",
+              "value": "0xd270f1bdfb076e697da3d7064ffd121168fea245f41987bb8ed5999079e1d0bc"
+            },
+            {
+              "name": "limit",
+              "value": 3
+            },
+            {
+              "name": "descending_order",
+              "value": true
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": [
+              {
+                "epoch": "5000",
+                "sequenceNumber": "1630",
+                "digest": "3HTXZkNMk9KDN6KDgFRV22XdybMjCp78biyxZAaZS3j3",
+                "networkTotalTransactions": "792385",
+                "previousDigest": "4TYz6xto2J1EVoTfLr23EMeyLApUke4e3wrhzW8F2QV6",
+                "epochRollingGasCostSummary": {
+                  "computationCost": "0",
+                  "storageCost": "0",
+                  "storageRebate": "0",
+                  "nonRefundableStorageFee": "0"
+                },
+                "timestampMs": "1676911928",
+                "transactions": [
+                  "FeGrSvZY1KJ9wHeu3AN2sDJ6cbLJfLBnaxMfN4eG7hoV"
+                ],
+                "checkpointCommitments": [],
+                "validatorSignature": "wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              },
+              {
+                "epoch": "5000",
+                "sequenceNumber": "1780",
+                "digest": "EwXDWF3maqrCmDTyEzLx8nujypiMVbtte6b8p1cwghEs",
+                "networkTotalTransactions": "792385",
+                "previousDigest": "5hpfpUwk6ZZ6nuqQk9ufShuiXWH3rZfvWak2nNs6xbN8",
+                "epochRollingGasCostSummary": {
+                  "computationCost": "0",
+                  "storageCost": "0",
+                  "storageRebate": "0",
+                  "nonRefundableStorageFee": "0"
+                },
+                "timestampMs": "1676911928",
+                "transactions": [
+                  "5t9yC8kJYbNh7sXr2yhrZFJghcMidouJSuzvAcgjh79T"
+                ],
+                "checkpointCommitments": [],
+                "validatorSignature": "wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              },
+              {
+                "epoch": "5000",
+                "sequenceNumber": "1623",
+                "digest": "Bx14BddQdtLEAxLHhZ9sthKKBLwvTbsLW2W7LYoiBcRy",
+                "networkTotalTransactions": "792385",
+                "previousDigest": "DUWZ7c6k9bDm3SWojGSDsNiYypk3rSezQRwHYBESqbii",
+                "epochRollingGasCostSummary": {
+                  "computationCost": "0",
+                  "storageCost": "0",
+                  "storageRebate": "0",
+                  "nonRefundableStorageFee": "0"
+                },
+                "timestampMs": "1676911928",
+                "transactions": [
+                  "Gk8keCc1Q3A5Y5HGFK7nNwtahuqwC1iKvzDotR1UQGY2"
+                ],
+                "checkpointCommitments": [],
+                "validatorSignature": "wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              },
+              {
+                "epoch": "5000",
+                "sequenceNumber": "1683",
+                "digest": "9zA7Q9Ka1ykvYjSQGhQCdCf32FZkcWNWx7L22JczXGsk",
+                "networkTotalTransactions": "792385",
+                "previousDigest": "8BLFxLTjWZ2KqaGc3FjR1o9aL6kbyYrmhuNfJLU1ehYt",
+                "epochRollingGasCostSummary": {
+                  "computationCost": "0",
+                  "storageCost": "0",
+                  "storageRebate": "0",
+                  "nonRefundableStorageFee": "0"
+                },
+                "timestampMs": "1676911928",
+                "transactions": [
+                  "7RudGLkQDBNJyqrptkrNU66Zd3pvq8MHVAHYz9WpBm59"
+                ],
+                "checkpointCommitments": [],
+                "validatorSignature": "wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "sui_getEvents",
