@@ -391,7 +391,7 @@
       },
       "examples": [
         {
-          "name": "Get information for all checkpoints.",
+          "name": "Get a paginated list in descending order of all checkpoints starting at the provided cursor. Each page of results has a maximum number of checkpoints set by the provided limit.",
           "params": [
             {
               "name": "cursor",
@@ -571,7 +571,17 @@
         "schema": {
           "$ref": "#/components/schemas/BigInt_for_uint64"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Get the sequence number for the latest checkpoint.",
+          "params": [],
+          "result": {
+            "name": "Result",
+            "value": "507021"
+          }
+        }
+      ]
     },
     {
       "name": "sui_getLoadedChildObjects",
@@ -1575,7 +1585,66 @@
         "schema": {
           "$ref": "#/components/schemas/Page_for_Coin_and_ObjectID"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Get all SUI coins owned by the address provided. Return a paginated list of `limit` results per page. Similar to `suix_getAllCoins`, but provides a way to filter by coin type.",
+          "params": [
+            {
+              "name": "owner",
+              "value": "0x48a53f22e2e901ea2a5bf44fdd5bb94a1d83b6efc4dd779f0890ca3b1f6ba997"
+            },
+            {
+              "name": "coin_type",
+              "value": "0x2::sui::SUI"
+            },
+            {
+              "name": "cursor",
+              "value": "0x0d4dc2f8623f7e6956c4b75a738cf80e869ecbccf96ef8bab1b6d79fbfa88548"
+            },
+            {
+              "name": "limit",
+              "value": 3
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "data": [
+                {
+                  "coinType": "0x2::sui::SUI",
+                  "coinObjectId": "0x850aa1ca641faf47cb518d49c1cf182fcf8ecceac97dd580e26f0b5bf17fbc86",
+                  "version": "103626",
+                  "digest": "Byq9SyV7x6fvzaf88YRA9JM8vLbVLJAqUX8pESDmKcgw",
+                  "balance": "200000000",
+                  "lockedUntilEpoch": null,
+                  "previousTransaction": "82ZNKSSueWUQkpFNbBZGHSr3sUL5Rxfr7ucVRsvgQzz2"
+                },
+                {
+                  "coinType": "0x2::sui::SUI",
+                  "coinObjectId": "0x49b09c3bfb031aca53e7ddf1dba61bb60f0ed9197ba22035b6933da55473399f",
+                  "version": "103626",
+                  "digest": "CEjwHmo98nAiYhSMfKoSDvUMtfKJ6ge6Uj4wKotK4MPZ",
+                  "balance": "200000000",
+                  "lockedUntilEpoch": null,
+                  "previousTransaction": "6WLoY7Auh9sZgfXqsnvxyyTPgiXKLnS86RM5JYoGuw9w"
+                },
+                {
+                  "coinType": "0x2::sui::SUI",
+                  "coinObjectId": "0x6d907beaa3a49db57bdfdb3557e6d405cbf01c293a53e01457d65e92b5d8dd68",
+                  "version": "103626",
+                  "digest": "FR3iTVBBMLMkvLDATCztp7w5MywUCuGPp95cga4y18Q5",
+                  "balance": "200000000",
+                  "lockedUntilEpoch": null,
+                  "previousTransaction": "C9fdokK19BpDCgUgWsJv3cfd4LDyk7WGYBeGhFHbEL2Z"
+                }
+              ],
+              "nextCursor": "0x6d907beaa3a49db57bdfdb3557e6d405cbf01c293a53e01457d65e92b5d8dd68",
+              "hasNextPage": true
+            }
+          }
+        }
+      ]
     },
     {
       "name": "suix_getCommitteeInfo",

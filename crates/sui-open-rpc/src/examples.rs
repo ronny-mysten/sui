@@ -97,6 +97,8 @@ impl RpcExampleProvider {
             self.suix_get_all_coins(),
             self.suix_get_balance(),
             self.suix_get_coin_metadata(),
+            self.sui_get_latest_checkpoint_sequence_number(),
+            self.suix_get_coins(),
         ]
         .into_iter()
         .map(|example| (example.function_name, example.examples))
@@ -343,7 +345,7 @@ impl RpcExampleProvider {
         Examples::new(
             "sui_getCheckpoints",
             vec![ExamplePairing::new(
-                "Get information for all checkpoints.",
+                "Get a paginated list in descending order of all checkpoints starting at the provided cursor. Each page of results has a maximum number of checkpoints set by the provided limit.",
                 vec![(
                         "cursor", json!(ObjectID::new(self.rng.gen())),
                     ),
@@ -626,6 +628,7 @@ impl RpcExampleProvider {
         )
     }
 
+
     fn sui_get_committee_info(&mut self) -> Examples {
         let epoch = 5000;
         let committee = json!(Committee::new_simple_test_committee_of_size(4));
@@ -755,9 +758,59 @@ impl RpcExampleProvider {
             vec![ExamplePairing::new(
                 "Get the metadata for the coin type in the request.",
                 vec![
-                    ("coin_type", serde_json::Value::String("0x168da5bf1f48dafc111b0a488fa454aca95e0b5e::usdc::USDC".to_string())),
+                    ("coin_type", json!("0x168da5bf1f48dafc111b0a488fa454aca95e0b5e::usdc::USDC".to_string())),
                 ],
                 json!(result),
+            )]
+        )
+    }
+
+    fn sui_get_latest_checkpoint_sequence_number(&mut self) -> Examples {
+        let result = "507021";
+        Examples::new(
+            "sui_getLatestCheckpointSequenceNumber",
+            vec![ExamplePairing::new(
+                "Get the sequence number for the latest checkpoint.",
+                vec![],
+                json!(result)
+            )]
+        )
+    }
+
+    fn suix_get_coins(&mut self) -> Examples {
+        let coin_type = "0x2::sui::SUI".to_string();
+        let owner = SuiAddress::from(ObjectID::new(self.rng.gen()));
+        let coins = (0..3)
+        .map(|_| Coin {
+            coin_type: coin_type.clone(),
+            coin_object_id: ObjectID::new(self.rng.gen()),
+            version: SequenceNumber::from_u64(103626),
+            digest: ObjectDigest::new(self.rng.gen()),
+            balance: 200000000,
+            locked_until_epoch: None,
+            previous_transaction: TransactionDigest::new(self.rng.gen()),
+
+        }).collect::<Vec<_>>();
+
+        let next_cursor = coins.last().unwrap().coin_object_id;
+
+        let page = CoinPage {
+            data: coins,
+            next_cursor: Some(next_cursor),
+            has_next_page: true
+        };
+        
+        Examples::new(
+            "suix_getCoins",
+            vec![ExamplePairing::new(
+                "Get all SUI coins owned by the address provided. Return a paginated list of `limit` results per page. Similar to `suix_getAllCoins`, but provides a way to filter by coin type.",
+                vec![
+                    ("owner", json!(owner)),
+                    ("coin_type", json!(coin_type)),
+                    ("cursor", json!(ObjectID::new(self.rng.gen()))),
+                    ("limit", json!(3))
+                ],
+                json!(page)
             )]
         )
     }
