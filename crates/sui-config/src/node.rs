@@ -17,7 +17,7 @@ use std::usize;
 use sui_keys::keypair_file::{read_authority_keypair_from_file, read_keypair_from_file};
 use sui_protocol_config::SupportedProtocolVersions;
 use sui_storage::object_store::ObjectStoreConfig;
-use sui_types::base_types::SuiAddress;
+use sui_types::base_types::{ObjectID, SuiAddress};
 use sui_types::crypto::AuthorityPublicKeyBytes;
 use sui_types::crypto::KeypairTraits;
 use sui_types::crypto::NetworkKeyPair;
@@ -62,8 +62,12 @@ pub struct NodeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub consensus_config: Option<ConsensusConfig>,
 
+    // TODO: Remove this as it's no longer used.
     #[serde(default)]
     pub enable_event_processing: bool,
+
+    #[serde(default = "default_enable_index_processing")]
+    pub enable_index_processing: bool,
 
     #[serde(default)]
     pub grpc_load_shed: Option<bool>,
@@ -105,10 +109,17 @@ pub struct NodeConfig {
 
     #[serde(default)]
     pub expensive_safety_check_config: ExpensiveSafetyCheckConfig,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_service_resolver_object_id: Option<ObjectID>,
 }
 
 fn default_authority_store_pruning_config() -> AuthorityStorePruningConfig {
     AuthorityStorePruningConfig::default()
+}
+
+pub fn default_enable_index_processing() -> bool {
+    true
 }
 
 fn default_grpc_address() -> Multiaddr {
@@ -274,6 +285,12 @@ pub struct ExpensiveSafetyCheckConfig {
     #[serde(default)]
     enable_epoch_sui_conservation_check: bool,
 
+    /// If enabled, we will check that the total SUI in all input objects of a tx
+    /// (both the Move part and the storage rebate) matches the total SUI in all
+    /// output objects of the tx + gas fees
+    #[serde(default)]
+    enable_deep_per_tx_sui_conservation_check: bool,
+
     /// Disable epoch SUI conservation check even when we are running in debug mode.
     #[serde(default)]
     force_disable_epoch_sui_conservation_check: bool,
@@ -298,6 +315,7 @@ impl ExpensiveSafetyCheckConfig {
     pub fn new_enable_all() -> Self {
         Self {
             enable_epoch_sui_conservation_check: true,
+            enable_deep_per_tx_sui_conservation_check: true,
             force_disable_epoch_sui_conservation_check: false,
             enable_state_consistency_check: true,
             force_disable_state_consistency_check: false,
@@ -330,6 +348,10 @@ impl ExpensiveSafetyCheckConfig {
     pub fn enable_move_vm_paranoid_checks(&self) -> bool {
         self.enable_move_vm_paranoid_checks
     }
+
+    pub fn enable_deep_per_tx_sui_conservation_check(&self) -> bool {
+        self.enable_deep_per_tx_sui_conservation_check || cfg!(debug_assertions)
+    }
 }
 
 fn default_checkpoint_execution_max_concurrency() -> usize {
@@ -337,7 +359,7 @@ fn default_checkpoint_execution_max_concurrency() -> usize {
 }
 
 fn default_local_execution_timeout_sec() -> u64 {
-    10
+    30
 }
 
 impl Default for CheckpointExecutorConfig {
@@ -352,13 +374,24 @@ impl Default for CheckpointExecutorConfig {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct AuthorityStorePruningConfig {
+    /// number of the latest epoch dbs to retain
     pub num_latest_epoch_dbs_to_retain: usize,
+    /// time interval used by the pruner to determine whether there are any epoch DBs to remove
     pub epoch_db_pruning_period_secs: u64,
+    /// number of epochs to keep the latest version of objects for.
+    /// Note that a zero value corresponds to an aggressive pruner.
+    /// This mode is experimental and needs to be used with caution.
+    /// Use `u64::MAX` to disable the pruner for the objects.
     pub num_epochs_to_retain: u64,
+    /// pruner's runtime interval used for aggressive mode
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pruning_run_delay_seconds: Option<u64>,
+    /// maximum number of checkpoints in the pruning batch. Can be adjusted to increase performance
     pub max_checkpoints_in_batch: usize,
+    /// maximum number of transaction in the pruning batch
     pub max_transactions_in_batch: usize,
+    /// pruner deletion method. If set to `true`, range deletion is utilized (recommended).
+    /// Use `false` for point deletes.
     pub use_range_deletion: bool,
 }
 
@@ -419,6 +452,8 @@ pub struct DBCheckpointConfig {
     pub checkpoint_path: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_store_config: Option<ObjectStoreConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub perform_index_db_checkpoints_at_epoch_end: Option<bool>,
 }
 
 /// Publicly known information about a validator

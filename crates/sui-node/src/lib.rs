@@ -20,10 +20,11 @@ use arc_swap::ArcSwap;
 use futures::TryFutureExt;
 use prometheus::Registry;
 use sui_core::consensus_adapter::LazyNarwhalClient;
+use sui_json_rpc::api::JsonRpcMetrics;
 use sui_types::sui_system_state::SuiSystemState;
 use tap::tap::TapFallible;
 use tokio::sync::broadcast;
-use tokio::sync::oneshot::Sender;
+use tokio::sync::oneshot;
 use tokio::sync::{watch, Mutex};
 use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
@@ -39,6 +40,7 @@ use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 use sui_config::node::DBCheckpointConfig;
 use sui_config::{ConsensusConfig, NodeConfig};
 use sui_core::authority::authority_per_epoch_store::AuthorityPerEpochStore;
+use sui_core::authority::epoch_start_configuration::EpochStartConfigTrait;
 use sui_core::authority::epoch_start_configuration::EpochStartConfiguration;
 use sui_core::authority_aggregator::AuthorityAggregator;
 use sui_core::authority_server::ValidatorService;
@@ -91,6 +93,7 @@ use sui_types::quorum_driver_types::QuorumDriverEffectsQueueResult;
 use sui_types::sui_system_state::epoch_start_sui_system_state::EpochStartSystemState;
 use sui_types::sui_system_state::epoch_start_sui_system_state::EpochStartSystemStateTrait;
 use sui_types::sui_system_state::SuiSystemStateTrait;
+use typed_store::rocks::default_db_options;
 use typed_store::DBMetrics;
 
 use crate::metrics::GrpcMetrics;
@@ -132,7 +135,7 @@ pub struct SuiNode {
     /// Broadcast channel to notify state-sync for new validator peers.
     trusted_peer_change_tx: watch::Sender<TrustedPeerChangeEvent>,
 
-    _db_checkpoint_handle: Option<Sender<()>>,
+    _db_checkpoint_handle: Option<oneshot::Sender<()>>,
 
     #[cfg(msim)]
     sim_node: sui_simulator::runtime::NodeHandle,
@@ -154,6 +157,16 @@ impl SuiNode {
         config: &NodeConfig,
         registry_service: RegistryService,
     ) -> Result<Arc<SuiNode>> {
+        let (sender, receiver) = oneshot::channel();
+        Self::start_async(config, registry_service, sender).await?;
+        Ok(receiver.await?)
+    }
+
+    pub async fn start_async(
+        config: &NodeConfig,
+        registry_service: RegistryService,
+        node_sender: oneshot::Sender<Arc<SuiNode>>,
+    ) -> Result<()> {
         let mut config = config.clone();
         if config.supported_protocol_versions.is_none() {
             info!(
@@ -184,19 +197,20 @@ impl SuiNode {
             &genesis_committee,
             None,
         ));
-        let store = Arc::new(
-            AuthorityStore::open(
-                &config.db_path().join("store"),
-                None,
-                genesis,
-                &committee_store,
-                config.indirect_objects_threshold,
-                config
-                    .expensive_safety_check_config
-                    .enable_epoch_sui_conservation_check(),
-            )
-            .await?,
-        );
+
+        let perpetual_options = default_db_options().optimize_db_for_write_throughput(4);
+        let store = AuthorityStore::open(
+            &config.db_path().join("store"),
+            Some(perpetual_options.options),
+            genesis,
+            &committee_store,
+            config.indirect_objects_threshold,
+            config
+                .expensive_safety_check_config
+                .enable_epoch_sui_conservation_check(),
+            &prometheus_registry,
+        )
+        .await?;
         let cur_epoch = store.get_recovery_epoch_at_restart()?;
         let committee = committee_store
             .get_committee(&cur_epoch)?
@@ -207,11 +221,12 @@ impl SuiNode {
         let cache_metrics = Arc::new(ResolverMetrics::new(&prometheus_registry));
         let signature_verifier_metrics = SignatureVerifierMetrics::new(&prometheus_registry);
 
+        let epoch_options = default_db_options().optimize_db_for_write_throughput(4);
         let epoch_store = AuthorityPerEpochStore::new(
             config.protocol_public_key(),
             committee.clone(),
             &config.db_path().join("store"),
-            None,
+            Some(epoch_options.options),
             EpochMetrics::new(&registry_service.default_registry()),
             epoch_start_configuration,
             store.clone(),
@@ -244,10 +259,13 @@ impl SuiNode {
             checkpoint_store.clone(),
         );
 
-        let index_store = if is_validator {
-            None
+        let index_store = if is_full_node && config.enable_index_processing {
+            Some(Arc::new(IndexStore::new(
+                config.db_path().join("indexes"),
+                &prometheus_registry,
+            )))
         } else {
-            Some(Arc::new(IndexStore::new(config.db_path().join("indexes"))))
+            None
         };
 
         // Create network
@@ -317,7 +335,7 @@ impl SuiNode {
                 ),
             );
             state
-                .try_execute_immediately(&transaction, &epoch_store)
+                .try_execute_immediately(&transaction, None, &epoch_store)
                 .instrument(span)
                 .await
                 .unwrap();
@@ -428,7 +446,10 @@ impl SuiNode {
         let node_copy = node.clone();
         spawn_monitored_task!(async move { Self::monitor_reconfiguration(node_copy).await });
 
-        Ok(node)
+        node_sender
+            .send(node)
+            .map_err(|_e| anyhow!("Failed to send node"))?;
+        Ok(())
     }
 
     pub fn subscribe_to_epoch_change(&self) -> broadcast::Receiver<SuiSystemState> {
@@ -1070,10 +1091,8 @@ impl SuiNode {
             .get_epoch_last_checkpoint(cur_epoch_store.epoch())
             .expect("Error loading last checkpoint for current epoch")
             .expect("Could not load last checkpoint for current epoch");
-        let epoch_start_configuration = EpochStartConfiguration::new_v1(
-            next_epoch_start_system_state,
-            *last_checkpoint.digest(),
-        );
+        let epoch_start_configuration =
+            EpochStartConfiguration::new(next_epoch_start_system_state, *last_checkpoint.digest());
 
         let new_epoch_store = self
             .state
@@ -1090,6 +1109,10 @@ impl SuiNode {
             .expect("Reconfigure authority state cannot fail");
         info!(next_epoch, "Node State has been reconfigured");
         assert_eq!(next_epoch, new_epoch_store.epoch());
+        self.state.database.update_epoch_flags_metrics(
+            cur_epoch_store.epoch_start_config().flags(),
+            new_epoch_store.epoch_start_config().flags(),
+        );
         new_epoch_store
     }
 }
@@ -1124,11 +1147,11 @@ pub async fn build_server(
     }
 
     let mut server = JsonRpcServerBuilder::new(env!("CARGO_PKG_VERSION"), prometheus_registry);
-
-    server.register_module(ReadApi::new(state.clone()))?;
-    server.register_module(CoinReadApi::new(state.clone()))?;
+    let metrics = Arc::new(JsonRpcMetrics::new(prometheus_registry));
+    server.register_module(ReadApi::new(state.clone(), metrics.clone()))?;
+    server.register_module(CoinReadApi::new(state.clone(), metrics.clone()))?;
     server.register_module(TransactionBuilderApi::new(state.clone()))?;
-    server.register_module(GovernanceReadApi::new(state.clone()))?;
+    server.register_module(GovernanceReadApi::new(state.clone(), metrics.clone()))?;
 
     if let Some(transaction_orchestrator) = transaction_orchestrator {
         server.register_module(TransactionExecutionApi::new(
@@ -1137,7 +1160,12 @@ pub async fn build_server(
         ))?;
     }
 
-    server.register_module(IndexerApi::new(state.clone(), ReadApi::new(state.clone())))?;
+    server.register_module(IndexerApi::new(
+        state.clone(),
+        ReadApi::new(state.clone(), metrics.clone()),
+        config.name_service_resolver_object_id,
+        metrics.clone(),
+    ))?;
     server.register_module(MoveUtils::new(state.clone()))?;
 
     let rpc_server_handle = server.start(config.json_rpc_address).await?;

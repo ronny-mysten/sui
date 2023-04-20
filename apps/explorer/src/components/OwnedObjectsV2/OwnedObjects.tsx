@@ -1,8 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { type SuiObjectResponse } from '@mysten/sui.js';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import OwnedObject from './components/OwnedObject';
 
@@ -11,18 +10,10 @@ import { Heading } from '~/ui/Heading';
 import { LoadingSpinner } from '~/ui/LoadingSpinner';
 import { Pagination } from '~/ui/Pagination';
 
-export const OBJECTS_PER_PAGE: number = 6;
-
-function OwnerCoins({ id }: { id: string }): JSX.Element {
-    const [results, setResults] = useState<SuiObjectResponse[]>([]);
-    const [currentSlice, setCurrentSlice] = useState(1);
-    const { data, isLoading, isError } = useGetOwnedObjects(id);
-
-    useEffect(() => {
-        if (data) {
-            setResults(data?.data);
-        }
-    }, [data]);
+function OwnedObjects({ id }: { id: string }) {
+    const [currentPage, setCurrentPage] = useState(0);
+    const { data, isLoading, isError, hasNextPage, fetchNextPage, isFetching } =
+        useGetOwnedObjects(id);
 
     if (isError) {
         return (
@@ -31,6 +22,7 @@ function OwnerCoins({ id }: { id: string }): JSX.Element {
             </div>
         );
     }
+
     return (
         <div className="pl-7.5">
             {isLoading ? (
@@ -40,32 +32,38 @@ function OwnerCoins({ id }: { id: string }): JSX.Element {
                     <Heading color="gray-90" variant="heading4/semibold">
                         NFTs
                     </Heading>
-
-                    <div className="flex max-h-80 flex-col overflow-auto">
-                        <div className="flex flex-wrap">
-                            {results
-                                .slice(
-                                    (currentSlice - 1) * OBJECTS_PER_PAGE,
-                                    currentSlice * OBJECTS_PER_PAGE
-                                )
-                                .map((obj) => (
+                    {isLoading || isFetching ? (
+                        <LoadingSpinner />
+                    ) : (
+                        <div className="flex max-h-80 flex-col overflow-auto">
+                            <div className="flex flex-wrap">
+                                {data?.pages[currentPage]?.data.map((obj) => (
                                     <OwnedObject
                                         obj={obj}
                                         key={obj?.data?.objectId}
                                     />
                                 ))}
+                            </div>
                         </div>
-                    </div>
-                    {results.length > OBJECTS_PER_PAGE && (
+                    )}
+
+                    {(hasNextPage || data?.pages.length > 1) && (
                         <Pagination
-                            onNext={() => setCurrentSlice(currentSlice + 1)}
-                            hasNext={
-                                currentSlice !==
-                                Math.ceil(results.length / OBJECTS_PER_PAGE)
-                            }
-                            hasPrev={currentSlice !== 1}
-                            onPrev={() => setCurrentSlice(currentSlice - 1)}
-                            onFirst={() => setCurrentSlice(1)}
+                            onNext={() => {
+                                if (isLoading || isFetching) {
+                                    return;
+                                }
+
+                                // Make sure we are at the end before fetching another page
+                                if (currentPage === data?.pages.length - 1) {
+                                    fetchNextPage();
+                                }
+                                setCurrentPage(currentPage + 1);
+                            }}
+                            hasNext={Boolean(hasNextPage)}
+                            hasPrev={currentPage !== 0}
+                            onPrev={() => setCurrentPage(currentPage - 1)}
+                            onFirst={() => setCurrentPage(1)}
                         />
                     )}
                 </div>
@@ -74,4 +72,4 @@ function OwnerCoins({ id }: { id: string }): JSX.Element {
     );
 }
 
-export default OwnerCoins;
+export default OwnedObjects;

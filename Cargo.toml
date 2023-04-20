@@ -76,7 +76,6 @@ members = [
     "crates/sui-cost-tables",
     "crates/sui-faucet",
     "crates/sui-framework",
-    "crates/sui-framework-build",
     "crates/sui-framework-snapshot",
     "crates/sui-framework-tests",
     "crates/sui-indexer",
@@ -86,6 +85,8 @@ members = [
     "crates/sui-keys",
     "crates/sui-macros",
     "crates/sui-move",
+    "crates/sui-move-build",
+    "crates/sui-move-natives",
     "crates/sui-network",
     "crates/sui-node",
     "crates/sui-open-rpc",
@@ -94,6 +95,7 @@ members = [
     "crates/sui-protocol-config",
     "crates/sui-protocol-config-macros",
     "crates/sui-proxy",
+    "crates/sui-replay",
     "crates/sui-rosetta",
     "crates/sui-rpc-loadgen",
     "crates/sui-sdk",
@@ -108,10 +110,12 @@ members = [
     "crates/sui-transaction-builder",
     "crates/sui-transactional-test-runner",
     "crates/sui-types",
+    "crates/sui-upgrade-compatibility-transactional-tests",
     "crates/sui-verifier",
     "crates/sui-verifier-transactional-tests",
     "crates/telemetry-subscribers",
     "crates/test-utils",
+    "crates/transaction-fuzzer",
     "crates/typed-store",
     "crates/typed-store-derive",
     "crates/workspace-hack",
@@ -132,8 +136,8 @@ members = [
 ]
 
 [workspace.package]
-# This version string will be inherited by sui-core, sui-faucet, sui-node, sui-tools, sui-sdk, and sui crates
-version = "0.32.0"
+# This version string will be inherited by sui-core, sui-faucet, sui-node, sui-tools, sui-sdk, and sui crates.
+version = "0.33.0"
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
@@ -201,10 +205,10 @@ fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "84fd7c74
 fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "84fd7c7428c5f59185aecc56a2e0a006e8e07de1", package = "fastcrypto-zkp" }
 
 # anemo dependencies
-anemo = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e" }
-anemo-build = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e" }
-anemo-cli = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e"}
-anemo-tower = { git = "https://github.com/mystenlabs/anemo.git", rev = "40e3bf357313fe5caa924673711af8be4dc4096e"}
+anemo = { git = "https://github.com/mystenlabs/anemo.git", rev = "691e43c3f4df5e33b898a91cb1a808f68f76f52e" }
+anemo-build = { git = "https://github.com/mystenlabs/anemo.git", rev = "691e43c3f4df5e33b898a91cb1a808f68f76f52e" }
+anemo-cli = { git = "https://github.com/mystenlabs/anemo.git", rev = "691e43c3f4df5e33b898a91cb1a808f68f76f52e"}
+anemo-tower = { git = "https://github.com/mystenlabs/anemo.git", rev = "691e43c3f4df5e33b898a91cb1a808f68f76f52e"}
 
 # Use the same workspace-hack across crates.
 workspace-hack = { path = "crates/workspace-hack" }

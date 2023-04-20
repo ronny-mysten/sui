@@ -115,10 +115,10 @@ export default {
                 heading6: ['16px', '1'],
 
                 // Paragraph sizes:
-                p1: ['14px', '1.3'],
-                p2: ['13px', '1.3'],
-                p3: ['12px', '1.3'],
-                p4: ['11px', '1.3'],
+                pBody: ['14px', '1.3'],
+                pBodySmall: ['13px', '1.3'],
+                pSubtitle: ['12px', '1.3'],
+                pSubtitleSmall: ['11px', '1.3'],
             },
             fontFamily: {
                 system: fontFamily.sans,
@@ -146,6 +146,7 @@ export default {
                 50: '12.5rem',
                 verticalListShort: '13.0625rem',
                 verticalListLong: '35.6875rem',
+                600: '37.5rem',
             },
             height: {
                 header: '68px',

@@ -1,14 +1,16 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useRpcClient, convertNumberToDate } from '@mysten/core';
+import { useRpcClient } from '@mysten/core';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 
 import { CheckpointTransactionBlocks } from './CheckpointTransactionBlocks';
 
+import { SuiAmount } from '~/components/Table/SuiAmount';
 import { Banner } from '~/ui/Banner';
 import { DescriptionList, DescriptionItem } from '~/ui/DescriptionList';
+import { EpochLink } from '~/ui/InternalLink';
 import { LoadingSpinner } from '~/ui/LoadingSpinner';
 import { PageHeader } from '~/ui/PageHeader';
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '~/ui/Tabs';
@@ -39,93 +41,102 @@ export default function CheckpointDetail() {
                 <TabGroup as="div" size="lg">
                     <TabList>
                         <Tab>Details</Tab>
-                        {/* TODO: Get validator signatures */}
-                        {/* <Tab>Signatures</Tab> */}
+                        <Tab>Signatures</Tab>
                     </TabList>
                     <TabPanels>
                         <TabPanel>
                             <DescriptionList>
                                 <DescriptionItem title="Checkpoint Sequence No.">
                                     <Text
-                                        variant="p1/medium"
+                                        variant="pBody/medium"
                                         color="steel-darker"
                                     >
                                         {data.sequenceNumber}
                                     </Text>
                                 </DescriptionItem>
                                 <DescriptionItem title="Epoch">
-                                    <Text
-                                        variant="p1/medium"
-                                        color="steel-darker"
-                                    >
-                                        {data.epoch}
-                                    </Text>
+                                    <EpochLink epoch={data.epoch} />
                                 </DescriptionItem>
                                 <DescriptionItem title="Checkpoint Timestamp">
                                     <Text
-                                        variant="p1/medium"
+                                        variant="pBody/medium"
                                         color="steel-darker"
                                     >
                                         {data.timestampMs
-                                            ? convertNumberToDate(
-                                                  +(data.timestampMs ?? 0)
-                                              )
+                                            ? new Date(
+                                                  Number(data.timestampMs)
+                                              ).toLocaleString(undefined, {
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                  year: 'numeric',
+                                                  hour: 'numeric',
+                                                  minute: '2-digit',
+                                                  second: '2-digit',
+                                                  hour12: false,
+                                                  timeZone: 'UTC',
+                                                  timeZoneName: 'short',
+                                              })
                                             : '--'}
                                     </Text>
                                 </DescriptionItem>
                             </DescriptionList>
                         </TabPanel>
                         <TabPanel>
-                            {/* TODO: Get validator signatures */}
-                            {/* <DescriptionList>
-                                {contentsQuery.data?.user_signatures.map(
-                                    ([signature]) => (
+                            <TabGroup>
+                                <TabList>
+                                    <Tab>Aggregated Validator Signature</Tab>
+                                </TabList>
+                                <TabPanels>
+                                    <DescriptionList>
                                         <DescriptionItem
-                                            key={signature}
+                                            key={data.validatorSignature}
                                             title="Signature"
                                         >
                                             <Text
-                                                variant="p1/medium"
+                                                variant="pBody/medium"
                                                 color="steel-darker"
                                             >
-                                                {signature}
+                                                {data.validatorSignature}
                                             </Text>
                                         </DescriptionItem>
-                                    )
-                                )}
-                            </DescriptionList> */}
+                                    </DescriptionList>
+                                </TabPanels>
+                            </TabGroup>
                         </TabPanel>
                     </TabPanels>
                 </TabGroup>
                 <TabGroup as="div" size="lg">
                     <TabList>
-                        <Tab>Gas & Storage Fee</Tab>
+                        <Tab>Gas & Storage Fees</Tab>
                     </TabList>
                     <TabPanels>
                         <DescriptionList>
                             <DescriptionItem title="Computation Fee">
-                                <Text variant="p1/medium" color="steel-darker">
-                                    {
+                                <SuiAmount
+                                    full
+                                    amount={
                                         data.epochRollingGasCostSummary
                                             .computationCost
                                     }
-                                </Text>
+                                />
                             </DescriptionItem>
                             <DescriptionItem title="Storage Fee">
-                                <Text variant="p1/medium" color="steel-darker">
-                                    {
+                                <SuiAmount
+                                    full
+                                    amount={
                                         data.epochRollingGasCostSummary
                                             .storageCost
                                     }
-                                </Text>
+                                />
                             </DescriptionItem>
                             <DescriptionItem title="Storage Rebate">
-                                <Text variant="p1/medium" color="steel-darker">
-                                    {
+                                <SuiAmount
+                                    full
+                                    amount={
                                         data.epochRollingGasCostSummary
                                             .storageRebate
                                     }
-                                </Text>
+                                />
                             </DescriptionItem>
                         </DescriptionList>
                     </TabPanels>

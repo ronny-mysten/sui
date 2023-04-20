@@ -9,8 +9,10 @@ use move_command_line_common::{parser::Parser as MoveCLParser, values::ValueToke
 use move_core_types::identifier::Identifier;
 use move_core_types::u256::U256;
 use move_core_types::value::{MoveStruct, MoveValue};
+use move_transactional_test_runner::tasks::SyntaxChoice;
 use sui_types::base_types::SuiAddress;
 use sui_types::messages::{Argument, CallArg, ObjectArg};
+use sui_types::move_package::UpgradePolicy;
 use sui_types::object::Owner;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 
@@ -22,10 +24,15 @@ pub const SUI_ARGS_LONG: &str = "sui-args";
 pub struct SuiRunArgs {
     #[clap(long = "sender")]
     pub sender: Option<String>,
-    #[clap(long = "view-events")]
-    pub view_events: bool,
-    #[clap(long = "view-gas-used")]
-    pub view_gas_used: bool,
+    #[clap(long = "gas-price")]
+    pub gas_price: Option<u64>,
+    /// If set, this will override the protocol version
+    /// specified elsewhere (e.g., in init). Use with
+    /// caution!
+    #[clap(long = "protocol-version")]
+    pub protocol_version: Option<u64>,
+    #[clap(long = "uncharged")]
+    pub uncharged: bool,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -34,8 +41,6 @@ pub struct SuiPublishArgs {
     pub sender: Option<String>,
     #[clap(long = "upgradeable", action = clap::ArgAction::SetTrue)]
     pub upgradeable: bool,
-    #[clap(long = "view-gas-used")]
-    pub view_gas_used: bool,
     #[clap(
         long = "dependencies",
         multiple_values(true),
@@ -48,6 +53,8 @@ pub struct SuiPublishArgs {
 pub struct SuiInitArgs {
     #[clap(long = "accounts", multiple_values(true), multiple_occurrences(false))]
     pub accounts: Option<Vec<String>>,
+    #[clap(long = "protocol_version")]
+    pub protocol_version: Option<u64>,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -66,8 +73,6 @@ pub struct TransferObjectCommand {
     pub sender: Option<String>,
     #[clap(long = "gas-budget")]
     pub gas_budget: Option<u64>,
-    #[clap(long = "view-gas-used")]
-    pub view_gas_used: bool,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -82,10 +87,8 @@ pub struct ProgrammableTransactionCommand {
     pub sender: Option<String>,
     #[clap(long = "gas-budget")]
     pub gas_budget: Option<u64>,
-    #[clap(long = "view-events")]
-    pub view_events: bool,
-    #[clap(long = "view-gas-used")]
-    pub view_gas_used: bool,
+    #[clap(long = "gas-price")]
+    pub gas_price: Option<u64>,
     #[clap(
         long = "inputs",
         parse(try_from_str = ParsedValue::parse),
@@ -94,6 +97,28 @@ pub struct ProgrammableTransactionCommand {
         multiple_occurrences(true)
     )]
     pub inputs: Vec<ParsedValue<SuiExtraValueArgs>>,
+}
+
+#[derive(Debug, clap::Parser)]
+pub struct UpgradePackageCommand {
+    #[clap(long = "package")]
+    pub package: String,
+    #[clap(long = "upgrade-capability", parse(try_from_str = parse_fake_id))]
+    pub upgrade_capability: FakeID,
+    #[clap(
+        long = "dependencies",
+        multiple_values(true),
+        multiple_occurrences(false)
+    )]
+    pub dependencies: Vec<String>,
+    #[clap(long = "sender")]
+    pub sender: String,
+    #[clap(long = "gas-budget")]
+    pub gas_budget: Option<u64>,
+    #[clap(long = "syntax")]
+    pub syntax: Option<SyntaxChoice>,
+    #[clap(long = "policy", default_value="compatible", parse(try_from_str = parse_policy))]
+    pub policy: u8,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -106,6 +131,8 @@ pub enum SuiSubcommand {
     ConsensusCommitPrologue(ConsensusCommitPrologueCommand),
     #[clap(name = "programmable")]
     ProgrammableTransaction(ProgrammableTransactionCommand),
+    #[clap(name = "upgrade")]
+    UpgradePackage(UpgradePackageCommand),
 }
 
 #[derive(Debug)]
@@ -280,5 +307,14 @@ fn parse_fake_id(s: &str) -> anyhow::Result<FakeID> {
         u256_bytes.reverse();
         let address: SuiAddress = SuiAddress::from_bytes(&u256_bytes).unwrap();
         FakeID::Known(address.into())
+    })
+}
+
+fn parse_policy(x: &str) -> anyhow::Result<u8> {
+    Ok(match x {
+            "compatible" => UpgradePolicy::COMPATIBLE,
+            "additive" => UpgradePolicy::ADDITIVE,
+            "dep_only" => UpgradePolicy::DEP_ONLY,
+        _ => bail!("Invalid upgrade policy {x}. Policy must be one of 'compatible', 'additive', or 'dep_only'")
     })
 }

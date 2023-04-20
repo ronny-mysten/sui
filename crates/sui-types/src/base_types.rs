@@ -74,6 +74,7 @@ mod base_types_tests;
     Deserialize,
     JsonSchema,
 )]
+#[cfg_attr(feature = "fuzzing", derive(proptest_derive::Arbitrary))]
 pub struct SequenceNumber(u64);
 
 impl SequenceNumber {
@@ -130,13 +131,13 @@ pub struct MoveObjectType(MoveObjectType_);
 /// `MoveObjectType`
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone, Deserialize, Serialize, Hash)]
 pub enum MoveObjectType_ {
-    /// A type that is not 0x2::coin::Coin<T>
+    /// A type that is not `0x2::coin::Coin<T>`
     Other(StructTag),
-    /// A SUI coin (i.e., 0x2::coin::Coin<0x2::sui::SUI>)
+    /// A SUI coin (i.e., `0x2::coin::Coin<0x2::sui::SUI>`)
     GasCoin,
-    /// A record of a staked SUI coin (i.e., 0x3::staking_pool::StakedSui)
+    /// A record of a staked SUI coin (i.e., `0x3::staking_pool::StakedSui`)
     StakedSui,
-    /// A non-SUI coin type (i.e., 0x2::coin::Coin<T> where T != 0x2::sui::SUI)
+    /// A non-SUI coin type (i.e., `0x2::coin::Coin<T> where T != 0x2::sui::SUI`)
     Coin(TypeTag),
     // NOTE: if adding a new type here, and there are existing on-chain objects of that
     // type with Other(_), that is ok, but you must hand-roll PartialEq/Eq/Ord/maybe Hash
@@ -194,6 +195,15 @@ impl MoveObjectType {
         }
     }
 
+    pub fn coin_type_maybe(&self) -> Option<TypeTag> {
+        match &self.0 {
+            MoveObjectType_::GasCoin => Some(GAS::type_tag()),
+            MoveObjectType_::Coin(inner) => Some(inner.clone()),
+            MoveObjectType_::StakedSui => None,
+            MoveObjectType_::Other(_) => None,
+        }
+    }
+
     pub fn module_id(&self) -> ModuleId {
         ModuleId::new(self.address(), self.module().to_owned())
     }
@@ -208,7 +218,7 @@ impl MoveObjectType {
         }
     }
 
-    /// Return true if `self` is 0x2::coin::Coin<T> for some T (note: T can be SUI)
+    /// Return true if `self` is `0x2::coin::Coin<T>` for some T (note: T can be SUI)
     pub fn is_coin(&self) -> bool {
         match &self.0 {
             MoveObjectType_::GasCoin | MoveObjectType_::Coin(_) => true,
@@ -226,7 +236,7 @@ impl MoveObjectType {
         }
     }
 
-    /// Return true if `self` is 0x2::coin::Coin<t>
+    /// Return true if `self` is `0x2::coin::Coin<t>`
     pub fn is_coin_t(&self, t: &TypeTag) -> bool {
         match &self.0 {
             MoveObjectType_::GasCoin => GAS::is_gas_type(t),
@@ -386,25 +396,20 @@ impl ObjectInfo {
 const PACKAGE: &str = "package";
 impl ObjectType {
     pub fn is_gas_coin(&self) -> bool {
-        match self {
-            ObjectType::Struct(s) => s.is_gas_coin(),
-            ObjectType::Package => false,
-        }
+        matches!(self, ObjectType::Struct(s) if s.is_gas_coin())
     }
 
     pub fn is_coin(&self) -> bool {
-        match self {
-            ObjectType::Struct(s) => s.is_coin(),
-            ObjectType::Package => false,
-        }
+        matches!(self, ObjectType::Struct(s) if s.is_coin())
     }
 
-    /// Return true if `self` is 0x2::coin::Coin<t>
+    /// Return true if `self` is `0x2::coin::Coin<t>`
     pub fn is_coin_t(&self, t: &TypeTag) -> bool {
-        match self {
-            ObjectType::Struct(s) => s.is_coin_t(t),
-            ObjectType::Package => false,
-        }
+        matches!(self, ObjectType::Struct(s) if s.is_coin_t(t))
+    }
+
+    pub fn is_package(&self) -> bool {
+        matches!(self, ObjectType::Package)
     }
 }
 
@@ -426,6 +431,7 @@ pub const SUI_ADDRESS_LENGTH: usize = ObjectID::LENGTH;
 #[derive(
     Eq, Default, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, Serialize, Deserialize, JsonSchema,
 )]
+#[cfg_attr(feature = "fuzzing", derive(proptest_derive::Arbitrary))]
 pub struct SuiAddress(
     #[schemars(with = "Hex")]
     #[serde_as(as = "Readable<Hex, _>")]
@@ -446,7 +452,7 @@ impl SuiAddress {
         AccountAddress::random().into()
     }
 
-    /// Serialize an Option<SuiAddress> in Hex.
+    /// Serialize an `Option<SuiAddress>` in Hex.
     pub fn optional_address_as_hex<S>(
         key: &Option<SuiAddress>,
         serializer: S,
@@ -457,7 +463,7 @@ impl SuiAddress {
         serializer.serialize_str(&key.map(Hex::encode).unwrap_or_default())
     }
 
-    /// Deserialize into an Option<SuiAddress>.
+    /// Deserialize into an `Option<SuiAddress>`.
     pub fn optional_address_from_hex<'de, D>(
         deserializer: D,
     ) -> Result<Option<SuiAddress>, D::Error>
@@ -709,11 +715,25 @@ pub struct TxContext {
 
 impl TxContext {
     pub fn new(sender: &SuiAddress, digest: &TransactionDigest, epoch_data: &EpochData) -> Self {
+        Self::new_from_components(
+            sender,
+            digest,
+            &epoch_data.epoch_id(),
+            epoch_data.epoch_start_timestamp(),
+        )
+    }
+
+    pub fn new_from_components(
+        sender: &SuiAddress,
+        digest: &TransactionDigest,
+        epoch_id: &EpochId,
+        epoch_timestamp_ms: u64,
+    ) -> Self {
         Self {
             sender: AccountAddress::new(sender.0),
             digest: digest.into_inner().to_vec(),
-            epoch: epoch_data.epoch_id(),
-            epoch_timestamp_ms: epoch_data.epoch_start_timestamp(),
+            epoch: *epoch_id,
+            epoch_timestamp_ms,
             ids_created: 0,
         }
     }
@@ -860,7 +880,7 @@ impl ObjectID {
         Self(AccountAddress::new(obj_id))
     }
 
-    /// Const fn variant of <ObjectID as From<AccountAddress>>::from
+    /// Const fn variant of `<ObjectID as From<AccountAddress>>::from`
     pub const fn from_address(addr: AccountAddress) -> Self {
         Self(addr)
     }

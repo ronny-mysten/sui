@@ -5,7 +5,7 @@ use jsonrpsee::core::RpcResult;
 use jsonrpsee_proc_macros::rpc;
 
 use sui_json_rpc_types::{
-    DynamicFieldPage, EventFilter, EventPage, ObjectsPage, SuiEvent, SuiObjectResponse,
+    DynamicFieldPage, EventFilter, EventPage, ObjectsPage, Page, SuiEvent, SuiObjectResponse,
     SuiObjectResponseQuery, SuiTransactionBlockResponseQuery, TransactionBlocksPage,
 };
 use sui_open_rpc_macros::open_rpc;
@@ -84,12 +84,31 @@ pub trait IndexerApi {
     ) -> RpcResult<DynamicFieldPage>;
 
     /// Return the dynamic field object information for a specified object
-    #[method(name = "getDynamicFieldObject")]
-    async fn get_dynamic_field_object(
+    #[method(name = "getDynamicFieldObject", blocking)]
+    fn get_dynamic_field_object(
         &self,
         /// The ID of the queried parent object
         parent_object_id: ObjectID,
         /// The Name of the dynamic field
         name: DynamicFieldName,
     ) -> RpcResult<SuiObjectResponse>;
+
+    /// Return the resolved address given resolver and name
+    #[method(name = "resolveNameServiceAddress")]
+    async fn resolve_name_service_address(
+        &self,
+        /// The name to resolve
+        name: String,
+    ) -> RpcResult<SuiAddress>;
+
+    /// Return the resolved names given address,
+    /// if multiple names are resolved, the first one is the primary name.
+    #[method(name = "resolveNameServiceNames")]
+    async fn resolve_name_service_names(
+        &self,
+        /// The address to resolve
+        address: SuiAddress,
+        cursor: Option<ObjectID>,
+        limit: Option<usize>,
+    ) -> RpcResult<Page<String, ObjectID>>;
 }

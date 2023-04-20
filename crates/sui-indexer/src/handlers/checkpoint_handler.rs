@@ -9,7 +9,6 @@ use futures::future::join_all;
 use futures::FutureExt;
 use jsonrpsee::http_client::HttpClient;
 use move_core_types::ident_str;
-use prometheus::Registry;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     Mutex,
@@ -32,7 +31,7 @@ use sui_types::sui_system_state::sui_system_state_summary::SuiSystemStateSummary
 use sui_types::SUI_SYSTEM_ADDRESS;
 
 use crate::errors::IndexerError;
-use crate::metrics::IndexerCheckpointHandlerMetrics;
+use crate::metrics::IndexerMetrics;
 use crate::models::checkpoints::Checkpoint;
 use crate::models::epoch::{DBEpochInfo, SystemEpochInfoEvent};
 use crate::models::objects::{DeletedObject, Object, ObjectStatus};
@@ -49,7 +48,7 @@ use crate::IndexerConfig;
 const MAX_PARALLEL_DOWNLOADS: usize = 24;
 const DOWNLOAD_RETRY_INTERVAL_IN_SECS: u64 = 10;
 const DB_COMMIT_RETRY_INTERVAL_IN_MILLIS: u64 = 100;
-const MULTI_GET_CHUNK_SIZE: usize = 200;
+const MULTI_GET_CHUNK_SIZE: usize = 50;
 const CHECKPOINT_QUEUE_LIMIT: usize = 24;
 const EPOCH_QUEUE_LIMIT: usize = 2;
 
@@ -58,7 +57,7 @@ pub struct CheckpointHandler<S> {
     state: S,
     http_client: HttpClient,
     event_handler: Arc<EventHandler>,
-    metrics: IndexerCheckpointHandlerMetrics,
+    metrics: IndexerMetrics,
     config: IndexerConfig,
     checkpoint_sender: Arc<Mutex<Sender<TemporaryCheckpointStore>>>,
     checkpoint_receiver: Arc<Mutex<Receiver<TemporaryCheckpointStore>>>,
@@ -77,7 +76,7 @@ where
         state: S,
         http_client: HttpClient,
         event_handler: Arc<EventHandler>,
-        prometheus_registry: &Registry,
+        metrics: IndexerMetrics,
         config: &IndexerConfig,
     ) -> Self {
         let (checkpoint_sender, checkpoint_receiver) = mpsc::channel(CHECKPOINT_QUEUE_LIMIT);
@@ -88,7 +87,7 @@ where
             state,
             http_client,
             event_handler,
-            metrics: IndexerCheckpointHandlerMetrics::new(prometheus_registry),
+            metrics,
             config: config.clone(),
             checkpoint_sender: Arc::new(Mutex::new(checkpoint_sender)),
             checkpoint_receiver: Arc::new(Mutex::new(checkpoint_receiver)),
@@ -207,7 +206,6 @@ where
         loop {
             let download_futures = (next_cursor_sequence_number
                 ..next_cursor_sequence_number + current_parallel_downloads as i64)
-                .into_iter()
                 .map(|seq_num| {
                     self.download_checkpoint_data(seq_num as u64, /* skip objects */ false)
                 });
@@ -219,6 +217,14 @@ where
                 if let Ok(checkpoint) = download_result {
                     downloaded_checkpoints.push(checkpoint);
                 } else {
+                    if let Err(IndexerError::UnexpectedFullnodeResponseError(fn_e)) =
+                        download_result
+                    {
+                        warn!(
+                            "Unexpected response from fullnode for object checkpoints: {}",
+                            fn_e
+                        );
+                    }
                     break;
                 }
             }
@@ -229,6 +235,7 @@ where
             current_parallel_downloads =
                 std::cmp::min(downloaded_checkpoints.len() + 1, MAX_PARALLEL_DOWNLOADS);
             if downloaded_checkpoints.is_empty() {
+                warn!("No object checkpoints downloaded, retrying in next iteration ...");
                 continue;
             }
 
@@ -283,7 +290,6 @@ where
         loop {
             let download_futures = (next_cursor_sequence_number
                 ..next_cursor_sequence_number + current_parallel_downloads as i64)
-                .into_iter()
                 .map(|seq_num| {
                     self.download_checkpoint_data(seq_num as u64, /* skip objects */ true)
                 });
@@ -295,6 +301,14 @@ where
                 if let Ok(checkpoint) = download_result {
                     downloaded_checkpoints.push(checkpoint);
                 } else {
+                    if let Err(IndexerError::UnexpectedFullnodeResponseError(fn_e)) =
+                        download_result
+                    {
+                        warn!(
+                            "Unexpected response from fullnode for checkpoints: {}",
+                            fn_e
+                        );
+                    }
                     break;
                 }
             }
@@ -306,6 +320,7 @@ where
             current_parallel_downloads =
                 std::cmp::min(downloaded_checkpoints.len() + 1, MAX_PARALLEL_DOWNLOADS);
             if downloaded_checkpoints.is_empty() {
+                warn!("No checkpoints downloaded, retrying in next iteration ...");
                 continue;
             }
 
@@ -350,9 +365,15 @@ where
                 // otherwise send it to channel to be committed later.
                 if epoch.last_epoch.is_none() {
                     let epoch_db_guard = self.metrics.epoch_db_commit_latency.start_timer();
-                    self.state.persist_epoch(&epoch).await?;
+                    info!("Persisting first epoch...");
+                    let mut persist_first_epoch_res = self.state.persist_epoch(&epoch).await;
+                    while persist_first_epoch_res.is_err() {
+                        warn!("Failed to persist first epoch, retrying...");
+                        persist_first_epoch_res = self.state.persist_epoch(&epoch).await;
+                    }
                     epoch_db_guard.stop_and_record();
                     self.metrics.total_epoch_committed.inc();
+                    info!("Persisted first epoch");
                 } else {
                     let epoch_sender_guard = self.epoch_sender.lock().await;
                     // NOTE: when the channel is full, epoch_sender_guard will wait until the channel has space.
@@ -511,6 +532,9 @@ where
                         .await;
                 }
                 checkpoint_tx_db_guard.stop_and_record();
+                self.metrics
+                    .latest_indexer_checkpoint_sequence_number
+                    .set(checkpoint_seq);
 
                 self.metrics.total_checkpoint_committed.inc();
                 let tx_count = transactions.len();
@@ -586,6 +610,9 @@ where
                 self.metrics
                     .total_object_change_committed
                     .inc_by(tx_object_changes.len() as u64);
+                self.metrics
+                    .latest_indexer_object_checkpoint_sequence_number
+                    .set(checkpoint_seq);
             } else {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
@@ -633,6 +660,20 @@ where
         seq: CheckpointSequenceNumber,
         skip_object: bool,
     ) -> Result<CheckpointData, IndexerError> {
+        let latest_fn_checkpoint_seq = self
+            .http_client
+            .get_latest_checkpoint_sequence_number()
+            .await
+            .map_err(|e| {
+                IndexerError::FullNodeReadingError(format!(
+                    "Failed to get latest checkpoint sequence number and error {:?}",
+                    e
+                ))
+            })?;
+        self.metrics
+            .latest_fullnode_checkpoint_sequence_number
+            .set((*latest_fn_checkpoint_seq) as i64);
+
         let mut checkpoint = self
             .http_client
             .get_checkpoint(seq.into())

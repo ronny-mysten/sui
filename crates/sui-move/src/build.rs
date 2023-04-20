@@ -6,13 +6,8 @@ use fastcrypto::encoding::{Encoding, Hex};
 use move_cli::base::{self, build};
 use move_package::BuildConfig as MoveBuildConfig;
 use serde_json::json;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
-use sui_framework_build::compiled_package::{
-    check_invalid_dependencies, check_unpublished_dependencies, BuildConfig,
-};
+use std::{fs, path::PathBuf};
+use sui_move_build::{check_invalid_dependencies, check_unpublished_dependencies, BuildConfig};
 
 const LAYOUTS_DIR: &str = "layouts";
 const STRUCT_LAYOUTS_FILENAME: &str = "struct_layouts.yaml";
@@ -49,7 +44,7 @@ impl Build {
         let rerooted_path = base::reroot_path(path.clone())?;
         let build_config = resolve_lock_file_path(build_config, path)?;
         Self::execute_internal(
-            &rerooted_path,
+            rerooted_path,
             build_config,
             self.with_unpublished_dependencies,
             self.dump_bytecode_as_base64,
@@ -59,21 +54,19 @@ impl Build {
     }
 
     pub fn execute_internal(
-        rerooted_path: &Path,
+        rerooted_path: PathBuf,
         config: MoveBuildConfig,
         with_unpublished_deps: bool,
         dump_bytecode_as_base64: bool,
         generate_struct_layouts: bool,
         dump_package_digest: bool,
     ) -> anyhow::Result<()> {
-        let pkg = sui_framework::build_move_package(
-            rerooted_path,
-            BuildConfig {
-                config,
-                run_bytecode_verifier: true,
-                print_diags_to_stderr: true,
-            },
-        )?;
+        let pkg = BuildConfig {
+            config,
+            run_bytecode_verifier: true,
+            print_diags_to_stderr: true,
+        }
+        .build(rerooted_path)?;
         if dump_bytecode_as_base64 {
             check_invalid_dependencies(&pkg.dependency_ids.invalid)?;
             if !with_unpublished_deps {
@@ -86,6 +79,7 @@ impl Build {
                 json!({
                     "modules": pkg.get_package_base64(with_unpublished_deps),
                     "dependencies": json!(package_dependencies),
+                    "digest": pkg.get_package_digest(with_unpublished_deps),
                 })
             )
         }

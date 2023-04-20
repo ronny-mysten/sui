@@ -12,13 +12,12 @@ use sui_types::storage::ObjectStore;
 use typed_store::metrics::SamplingInterval;
 use typed_store::rocks::util::{empty_compaction_filter, reference_count_merge_operator};
 use typed_store::rocks::{
-    optimized_for_high_throughput_options, read_size_from_env, DBBatch, DBMap, DBOptions,
-    MetricConf, ReadWriteOptions,
+    default_db_options, read_size_from_env, DBBatch, DBMap, DBOptions, MetricConf, ReadWriteOptions,
 };
 use typed_store::traits::{Map, TableSummary, TypedStoreDebug};
 
 use crate::authority::authority_store_types::{
-    MigratedStoreObjectPair, ObjectContentDigest, StoreData, StoreMoveObjectWrapper, StoreObject,
+    try_construct_object, ObjectContentDigest, StoreData, StoreMoveObjectWrapper, StoreObject,
     StoreObjectValue, StoreObjectWrapper,
 };
 use crate::authority::epoch_start_configuration::EpochStartConfiguration;
@@ -28,8 +27,8 @@ const ENV_VAR_OBJECTS_BLOCK_CACHE_SIZE: &str = "OBJECTS_BLOCK_CACHE_MB";
 const ENV_VAR_LOCKS_BLOCK_CACHE_SIZE: &str = "LOCKS_BLOCK_CACHE_MB";
 const ENV_VAR_TRANSACTIONS_BLOCK_CACHE_SIZE: &str = "TRANSACTIONS_BLOCK_CACHE_MB";
 const ENV_VAR_EFFECTS_BLOCK_CACHE_SIZE: &str = "EFFECTS_BLOCK_CACHE_MB";
-const ENV_VAR_INDIRECT_OBJECTS_BLOCK_CACHE_SIZE: &str = "INDIRECT_OBJECTS_BLOCK_CACHE_MB";
 const ENV_VAR_EVENTS_BLOCK_CACHE_SIZE: &str = "EVENTS_BLOCK_CACHE_MB";
+const ENV_VAR_INDIRECT_OBJECTS_BLOCK_CACHE_SIZE: &str = "INDIRECT_OBJECTS_BLOCK_CACHE_MB";
 
 /// AuthorityPerpetualTables contains data that must be preserved from one epoch to the next.
 #[derive(DBMapUtils)]
@@ -152,10 +151,14 @@ impl AuthorityPerpetualTables {
         };
         iter.reverse()
             .next()
-            .and_then(|(_, o)| self.object(o).ok().flatten())
+            .and_then(|(key, o)| self.object(&key, o).ok().flatten())
     }
 
-    fn construct_object(&self, store_object: StoreObjectValue) -> Result<Object, SuiError> {
+    fn construct_object(
+        &self,
+        object_key: &ObjectKey,
+        store_object: StoreObjectValue,
+    ) -> Result<Object, SuiError> {
         let indirect_object = match store_object.data {
             StoreData::IndirectObject(ref metadata) => self
                 .indirect_move_objects
@@ -163,15 +166,18 @@ impl AuthorityPerpetualTables {
                 .map(|o| o.migrate().into_inner()),
             _ => None,
         };
-        let object = MigratedStoreObjectPair(store_object, indirect_object).try_into()?;
-        Ok(object)
+        try_construct_object(object_key, store_object, indirect_object)
     }
 
     // Constructs `sui_types::object::Object` from `StoreObjectWrapper`.
     // Returns `None` if object was deleted/wrapped
-    pub fn object(&self, store_object: StoreObjectWrapper) -> Result<Option<Object>, SuiError> {
+    pub fn object(
+        &self,
+        object_key: &ObjectKey,
+        store_object: StoreObjectWrapper,
+    ) -> Result<Option<Object>, SuiError> {
         let StoreObject::Value(store_object) = store_object.migrate().into_inner() else {return Ok(None)};
-        Ok(Some(self.construct_object(store_object)?))
+        Ok(Some(self.construct_object(object_key, store_object)?))
     }
 
     pub fn object_reference(
@@ -180,7 +186,9 @@ impl AuthorityPerpetualTables {
         store_object: StoreObjectWrapper,
     ) -> Result<ObjectRef, SuiError> {
         let obj_ref = match store_object.migrate().into_inner() {
-            StoreObject::Value(object) => self.construct_object(object)?.compute_object_reference(),
+            StoreObject::Value(object) => self
+                .construct_object(object_key, object)?
+                .compute_object_reference(),
             StoreObject::Deleted => (
                 object_key.0,
                 object_key.1,
@@ -282,6 +290,8 @@ impl AuthorityPerpetualTables {
         self.root_state_hash_by_epoch.clear()?;
         self.epoch_start_configuration.clear()?;
         self.pruned_checkpoint.clear()?;
+        self.expected_network_sui_amount.clear()?;
+        self.expected_storage_fund_imbalance.clear()?;
         self.objects
             .rocksdb
             .flush()
@@ -300,7 +310,9 @@ impl ObjectStore for AuthorityPerpetualTables {
             .next();
 
         match obj_entry {
-            Some((ObjectKey(obj_id, _), obj)) if obj_id == *object_id => Ok(self.object(obj)?),
+            Some((ObjectKey(obj_id, version), obj)) if obj_id == *object_id => {
+                Ok(self.object(&ObjectKey(obj_id, version), obj)?)
+            }
             _ => Ok(None),
         }
     }
@@ -310,12 +322,12 @@ impl ObjectStore for AuthorityPerpetualTables {
         object_id: &ObjectID,
         version: VersionNumber,
     ) -> Result<Option<Object>, SuiError> {
-        let key = ObjectKey(*object_id, version);
-        let obj_entry = self.objects.get(&key);
-        match obj_entry {
-            Ok(Some(wrapper)) => self.object(wrapper),
-            _ => Ok(None),
-        }
+        Ok(self
+            .objects
+            .get(&ObjectKey(*object_id, version))?
+            .map(|object| self.object(&ObjectKey(*object_id, version), object))
+            .transpose()?
+            .flatten())
     }
 }
 
@@ -355,7 +367,7 @@ fn store_object_wrapper_to_live_object(
     match store_object.migrate().into_inner() {
         StoreObject::Value(object) => {
             let object = tables
-                .construct_object(object)
+                .construct_object(&object_key, object)
                 .expect("Constructing object from store cannot fail");
             Some(LiveObject::Normal(object))
         }
@@ -397,19 +409,19 @@ impl Iterator for LiveSetIter<'_> {
 
 // These functions are used to initialize the DB tables
 fn owned_object_transaction_locks_table_default_config() -> DBOptions {
-    optimized_for_high_throughput_options(
-        read_size_from_env(ENV_VAR_LOCKS_BLOCK_CACHE_SIZE).unwrap_or(1024),
-        false,
-    )
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_read(read_size_from_env(ENV_VAR_LOCKS_BLOCK_CACHE_SIZE).unwrap_or(1024))
 }
 
 fn objects_table_default_config() -> DBOptions {
     DBOptions {
-        options: optimized_for_high_throughput_options(
-            read_size_from_env(ENV_VAR_OBJECTS_BLOCK_CACHE_SIZE).unwrap_or(5 * 1024),
-            false,
-        )
-        .options,
+        options: default_db_options()
+            .optimize_for_write_throughput()
+            .optimize_for_read(
+                read_size_from_env(ENV_VAR_OBJECTS_BLOCK_CACHE_SIZE).unwrap_or(5 * 1024),
+            )
+            .options,
         rw_options: ReadWriteOptions {
             ignore_range_deletions: true,
         },
@@ -417,31 +429,36 @@ fn objects_table_default_config() -> DBOptions {
 }
 
 fn transactions_table_default_config() -> DBOptions {
-    optimized_for_high_throughput_options(
-        read_size_from_env(ENV_VAR_TRANSACTIONS_BLOCK_CACHE_SIZE).unwrap_or(512),
-        true,
-    )
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan()
+        .optimize_for_point_lookup(
+            read_size_from_env(ENV_VAR_TRANSACTIONS_BLOCK_CACHE_SIZE).unwrap_or(512),
+        )
 }
 
 fn effects_table_default_config() -> DBOptions {
-    optimized_for_high_throughput_options(
-        read_size_from_env(ENV_VAR_EFFECTS_BLOCK_CACHE_SIZE).unwrap_or(1024),
-        true,
-    )
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan()
+        .optimize_for_point_lookup(
+            read_size_from_env(ENV_VAR_EFFECTS_BLOCK_CACHE_SIZE).unwrap_or(1024),
+        )
 }
 
 fn events_table_default_config() -> DBOptions {
-    optimized_for_high_throughput_options(
-        read_size_from_env(ENV_VAR_EVENTS_BLOCK_CACHE_SIZE).unwrap_or(1024),
-        false,
-    )
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan()
+        .optimize_for_read(read_size_from_env(ENV_VAR_EVENTS_BLOCK_CACHE_SIZE).unwrap_or(1024))
 }
 
 fn indirect_move_objects_table_default_config() -> DBOptions {
-    let mut options = optimized_for_high_throughput_options(
-        read_size_from_env(ENV_VAR_INDIRECT_OBJECTS_BLOCK_CACHE_SIZE).unwrap_or(512),
-        true,
-    );
+    let mut options = default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_point_lookup(
+            read_size_from_env(ENV_VAR_INDIRECT_OBJECTS_BLOCK_CACHE_SIZE).unwrap_or(512),
+        );
     options.options.set_merge_operator(
         "refcount operator",
         reference_count_merge_operator,

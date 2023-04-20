@@ -11,7 +11,7 @@ use clap::*;
 use fastcrypto::traits::KeyPair;
 use move_package::BuildConfig;
 use sui_config::genesis_config::DEFAULT_NUMBER_OF_AUTHORITIES;
-use sui_framework_build::compiled_package::SuiPackageHooks;
+use sui_move_build::SuiPackageHooks;
 use tracing::info;
 
 use sui_config::{
@@ -420,7 +420,7 @@ async fn genesis(
             );
         }
         builder
-            .initial_accounts_config(genesis_conf)
+            .with_genesis_config(genesis_conf)
             .with_validators(validators)
             .build()
     } else {
@@ -433,7 +433,7 @@ async fn genesis(
                 })
                 .unwrap(),
             )
-            .initial_accounts_config(genesis_conf)
+            .with_genesis_config(genesis_conf)
             .build()
     };
 

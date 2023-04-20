@@ -45,6 +45,7 @@ use fastcrypto::error::FastCryptoError;
 use fastcrypto::hash::{Blake2b256, HashFunction};
 pub use fastcrypto::traits::Signer;
 use std::fmt::Debug;
+use tracing::warn;
 
 #[cfg(test)]
 #[path = "unit_tests/crypto_tests.rs"]
@@ -370,7 +371,7 @@ impl PublicKey {
 pub struct AuthorityPublicKeyBytes(
     #[schemars(with = "Base64")]
     #[serde_as(as = "Readable<Base64, Bytes>")]
-    [u8; AuthorityPublicKey::LENGTH],
+    pub [u8; AuthorityPublicKey::LENGTH],
 );
 
 impl AuthorityPublicKeyBytes {
@@ -477,6 +478,12 @@ impl FromStr for AuthorityPublicKeyBytes {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let value = Hex::decode(s).map_err(|e| anyhow!(e))?;
         Self::from_bytes(&value[..]).map_err(|e| anyhow!(e))
+    }
+}
+
+impl Default for AuthorityPublicKeyBytes {
+    fn default() -> Self {
+        Self::ZERO
     }
 }
 
@@ -1550,7 +1557,7 @@ impl<'a> VerificationObligation<'a> {
 
     pub fn verify_all(self) -> SuiResult<()> {
         let mut pks = Vec::with_capacity(self.public_keys.len());
-        for pk in self.public_keys {
+        for pk in self.public_keys.clone() {
             pks.push(pk.into_iter());
         }
         AggregateAuthoritySignature::batch_verify(
@@ -1558,8 +1565,42 @@ impl<'a> VerificationObligation<'a> {
             pks,
             &self.messages.iter().map(|x| &x[..]).collect::<Vec<_>>()[..],
         )
-        .map_err(|e| SuiError::InvalidSignature {
-            error: format!("Failed to batch verify aggregated auth sig {}", e),
+        .map_err(|e| {
+            let message = format!(
+                "pks: {:?}, messages: {:?}, sigs: {:?}",
+                &self.public_keys,
+                self.messages
+                    .iter()
+                    .map(Base64::encode)
+                    .collect::<Vec<String>>(),
+                &self
+                    .signatures
+                    .iter()
+                    .map(|s| Base64::encode(s.as_ref()))
+                    .collect::<Vec<String>>()
+            );
+
+            let chunk_size = 2048;
+
+            // This error message may be very long, so we print out the error in chunks of to avoid
+            // hitting a max log line length on the system.
+            for (i, chunk) in message
+                .as_bytes()
+                .chunks(chunk_size)
+                .map(std::str::from_utf8)
+                .enumerate()
+            {
+                warn!(
+                    "Failed to batch verify aggregated auth sig: {} (chunk {}): {}",
+                    e,
+                    i,
+                    chunk.unwrap()
+                );
+            }
+
+            SuiError::InvalidSignature {
+                error: format!("Failed to batch verify aggregated auth sig: {}", e),
+            }
         })?;
         Ok(())
     }

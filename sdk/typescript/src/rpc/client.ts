@@ -12,8 +12,7 @@ import {
   Struct,
   validate,
 } from 'superstruct';
-import { pkgVersion } from '../pkg-version';
-import { TARGETED_RPC_VERSION } from '../providers/json-rpc-provider';
+import { PACKAGE_VERSION, TARGETED_RPC_VERSION } from '../version';
 import { RequestParamsLike } from 'jayson';
 import { RPCError, RPCValidationError } from '../utils/errors';
 
@@ -61,7 +60,7 @@ export class JsonRpcClient {
           headers: {
             'Content-Type': 'application/json',
             'Client-Sdk-Type': 'typescript',
-            'Client-Sdk-Version': pkgVersion,
+            'Client-Sdk-Version': PACKAGE_VERSION,
             'Client-Target-Api-Version': TARGETED_RPC_VERSION,
             ...httpHeaders,
           },
@@ -92,7 +91,6 @@ export class JsonRpcClient {
     method: string,
     args: RequestParamsLike,
     struct: Struct<T>,
-    skipDataValidation: boolean = false,
   ): Promise<T> {
     const req = { method, args };
 
@@ -107,7 +105,7 @@ export class JsonRpcClient {
     } else if (is(response, ValidResponse)) {
       const [err] = validate(response.result, struct);
 
-      if (skipDataValidation && err) {
+      if (err) {
         console.warn(
           new RPCValidationError({
             req,
@@ -116,13 +114,8 @@ export class JsonRpcClient {
           }),
         );
         return response.result;
-      } else if (err) {
-        throw new RPCValidationError({
-          req,
-          result: response.result,
-          cause: err,
-        });
       }
+
       return response.result;
     }
     // Unexpected response:

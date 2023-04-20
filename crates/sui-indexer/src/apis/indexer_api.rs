@@ -318,6 +318,8 @@ impl<S> IndexerApiServer for IndexerApi<S>
 where
     S: IndexerStore + Sync + Send + 'static,
 {
+    // TODO: remove this after `futures::executor::block_on` is removed. @Ge @Chris
+    #[allow(clippy::disallowed_methods)]
     fn get_owned_objects(
         &self,
         address: SuiAddress,
@@ -329,14 +331,22 @@ where
             .migrated_methods
             .contains(&"get_owned_objects".to_string())
         {
-            return block_on(
+            let owned_obj_guard = self
+                .state
+                .indexer_metrics()
+                .get_owned_objects_latency
+                .start_timer();
+            let owned_obj_resp = block_on(
                 self.fullnode
                     .get_owned_objects(address, query, cursor, limit),
             );
+            owned_obj_guard.stop_and_record();
+            return owned_obj_resp;
         }
         block_on(self.get_owned_objects_internal(address, query, cursor, limit))
     }
-
+    // TODO: remove this after `futures::executor::block_on` is removed. @Ge @Chris
+    #[allow(clippy::disallowed_methods)]
     fn query_transaction_blocks(
         &self,
         query: SuiTransactionBlockResponseQuery,
@@ -348,12 +358,19 @@ where
             .migrated_methods
             .contains(&"query_transaction_blocks".to_string())
         {
-            return block_on(self.fullnode.query_transaction_blocks(
+            let query_tx_guard = self
+                .state
+                .indexer_metrics()
+                .query_transaction_blocks_latency
+                .start_timer();
+            let query_tx_resp = block_on(self.fullnode.query_transaction_blocks(
                 query,
                 cursor,
                 limit,
                 descending_order,
             ));
+            query_tx_guard.stop_and_record();
+            return query_tx_resp;
         }
         Ok(block_on(self.query_transaction_blocks_internal(
             query,
@@ -363,6 +380,8 @@ where
         ))?)
     }
 
+    // TODO: remove this after `futures::executor::block_on` is removed. @Ge @Chris
+    #[allow(clippy::disallowed_methods)]
     fn query_events(
         &self,
         query: EventFilter,
@@ -371,11 +390,19 @@ where
         limit: Option<usize>,
         descending_order: Option<bool>,
     ) -> RpcResult<EventPage> {
-        if self.migrated_methods.contains(&"query_events".to_string()) {
-            return block_on(
-                self.fullnode
-                    .query_events(query, cursor, limit, descending_order),
-            );
+        if !self.migrated_methods.contains(&"query_events".to_string()) {
+            let query_events_guard = self
+                .state
+                .indexer_metrics()
+                .query_events_latency
+                .start_timer();
+            let query_events_resp =
+                block_on(
+                    self.fullnode
+                        .query_events(query, cursor, limit, descending_order),
+                );
+            query_events_guard.stop_and_record();
+            return query_events_resp;
         }
         Ok(block_on(self.query_events_internal(
             query,
@@ -385,31 +412,65 @@ where
         ))?)
     }
 
+    // TODO: remove this after `futures::executor::block_on` is removed. @Ge @Chris
+    #[allow(clippy::disallowed_methods)]
     fn get_dynamic_fields(
         &self,
         parent_object_id: ObjectID,
         cursor: Option<ObjectID>,
         limit: Option<usize>,
     ) -> RpcResult<DynamicFieldPage> {
-        block_on(
+        let df_guard = self
+            .state
+            .indexer_metrics()
+            .get_dynamic_fields_latency
+            .start_timer();
+        let df_resp = block_on(
             self.fullnode
                 .get_dynamic_fields(parent_object_id, cursor, limit),
-        )
+        );
+        df_guard.stop_and_record();
+        df_resp
     }
 
-    async fn get_dynamic_field_object(
+    // TODO: remove this after `futures::executor::block_on` is removed. @Ge @Chris
+    #[allow(clippy::disallowed_methods)]
+    fn get_dynamic_field_object(
         &self,
         parent_object_id: ObjectID,
         name: DynamicFieldName,
     ) -> RpcResult<SuiObjectResponse> {
-        self.fullnode
-            .get_dynamic_field_object(parent_object_id, name)
-            .await
+        let df_obj_guard = self
+            .state
+            .indexer_metrics()
+            .get_dynamic_field_object_latency
+            .start_timer();
+        let df_obj_resp = block_on(
+            self.fullnode
+                .get_dynamic_field_object(parent_object_id, name),
+        );
+        df_obj_guard.stop_and_record();
+        df_obj_resp
     }
 
     fn subscribe_event(&self, sink: SubscriptionSink, filter: EventFilter) -> SubscriptionResult {
         spawn_subscription(sink, self.event_handler.subscribe(filter));
         Ok(())
+    }
+
+    async fn resolve_name_service_address(&self, _name: String) -> RpcResult<SuiAddress> {
+        // TODO(gegaowp): implement name service resolver in indexer
+        todo!()
+    }
+
+    async fn resolve_name_service_names(
+        &self,
+        _address: SuiAddress,
+        _cursor: Option<ObjectID>,
+        _limit: Option<usize>,
+    ) -> RpcResult<Page<String, ObjectID>> {
+        // TODO(gegaowp): implement name service resolver in indexer
+        todo!()
     }
 }
 

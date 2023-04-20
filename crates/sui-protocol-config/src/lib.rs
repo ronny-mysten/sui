@@ -10,7 +10,7 @@ use tracing::{info, warn};
 
 /// The minimum and maximum protocol versions supported by this build.
 const MIN_PROTOCOL_VERSION: u64 = 1;
-const MAX_PROTOCOL_VERSION: u64 = 4;
+const MAX_PROTOCOL_VERSION: u64 = 6;
 
 // Record history of protocol version allocations here:
 //
@@ -21,6 +21,9 @@ const MAX_PROTOCOL_VERSION: u64 = 4;
 //            `max_size_written_objects_system_tx`
 // Version 4: New reward slashing rate. Framework changes to skip stake susbidy when the epoch
 //            length is short.
+// Version 5: Package upgrade compatibility error fix. New gas cost table. New scoring decision
+//            mechanism that includes up to f scoring authorities.
+// Version 6: Change to how bytes are charged in the gas meter, increase buffer stake to 0.5f
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -130,6 +133,17 @@ struct FeatureFlags {
     // object runtime.
     #[serde(skip_serializing_if = "is_false")]
     loaded_child_objects_fixed: bool,
+    // If true, treat missing types in the upgraded modules when creating an upgraded package as a
+    // compatibility error.
+    #[serde(skip_serializing_if = "is_false")]
+    missing_type_is_compatibility_error: bool,
+    // If true, then the scoring decision mechanism will not get disabled when we do have more than
+    // f low scoring authorities, but it will simply flag as low scoring only up to f authorities.
+    #[serde(skip_serializing_if = "is_false")]
+    scoring_decision_with_validity_cutoff: bool,
+    // Re-order end of epoch messages to the end of the commit
+    #[serde(skip_serializing_if = "is_false")]
+    consensus_order_end_of_epoch_last: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -224,6 +238,12 @@ pub struct ProtocolConfig {
 
     /// Maximum number of gas units that a single MoveCall transaction can use. Enforced by the Sui adapter.
     max_tx_gas: Option<u64>,
+
+    /// Maximum amount of the proposed gas price in MIST (defined in the transaction).
+    max_gas_price: Option<u64>,
+
+    /// The max computation bucket for gas. This is the max that can be charged for computation.
+    max_gas_computation_bucket: Option<u64>,
 
     /// Maximum number of nested loops. Enforced by the Move bytecode verifier.
     max_loop_depth: Option<u64>,
@@ -553,6 +573,12 @@ pub struct ProtocolConfig {
     hmac_hmac_sha3_256_cost_base: Option<u64>,
     hmac_hmac_sha3_256_input_cost_per_byte: Option<u64>,
     hmac_hmac_sha3_256_input_cost_per_block: Option<u64>,
+
+    // Const params for consensus scoring decision
+    // The scaling factor property for the MED outlier detection
+    scoring_decision_mad_divisor: Option<f64>,
+    // The cutoff value for the MED outlier detection
+    scoring_decision_cutoff_value: Option<f64>,
 }
 
 // feature flags
@@ -594,6 +620,18 @@ impl ProtocolConfig {
 
     pub fn loaded_child_objects_fixed(&self) -> bool {
         self.feature_flags.loaded_child_objects_fixed
+    }
+
+    pub fn missing_type_is_compatibility_error(&self) -> bool {
+        self.feature_flags.missing_type_is_compatibility_error
+    }
+
+    pub fn scoring_decision_with_validity_cutoff(&self) -> bool {
+        self.feature_flags.scoring_decision_with_validity_cutoff
+    }
+
+    pub fn consensus_order_end_of_epoch_last(&self) -> bool {
+        self.feature_flags.consensus_order_end_of_epoch_last
     }
 }
 
@@ -719,6 +757,8 @@ impl ProtocolConfig {
                 max_move_object_size: Some(250 * 1024),
                 max_move_package_size: Some(100 * 1024),
                 max_tx_gas: Some(10_000_000_000),
+                max_gas_price: Some(100_000),
+                max_gas_computation_bucket: Some(5_000_000),
                 max_loop_depth: Some(5),
                 max_generic_instantiation_length: Some(32),
                 max_function_parameters: Some(128),
@@ -937,6 +977,10 @@ impl ProtocolConfig {
                 max_size_written_objects: None,
                 max_size_written_objects_system_tx: None,
 
+                // Const params for consensus scoring decision
+                scoring_decision_mad_divisor: None,
+                scoring_decision_cutoff_value: None,
+
                 // When adding a new constant, set it to None in the earliest version, like this:
                 // new_constant: None,
             },
@@ -969,6 +1013,22 @@ impl ProtocolConfig {
                 cfg.reward_slashing_rate = Some(10000);
                 // protect old and new lookup for object version
                 cfg.gas_model_version = Some(3);
+                cfg
+            }
+            5 => {
+                let mut cfg = Self::get_for_version_impl(version - 1);
+                cfg.feature_flags.missing_type_is_compatibility_error = true;
+                cfg.gas_model_version = Some(4);
+                cfg.feature_flags.scoring_decision_with_validity_cutoff = true;
+                cfg.scoring_decision_mad_divisor = Some(2.3);
+                cfg.scoring_decision_cutoff_value = Some(2.5);
+                cfg
+            }
+            6 => {
+                let mut cfg = Self::get_for_version_impl(version - 1);
+                cfg.gas_model_version = Some(5);
+                cfg.buffer_stake_for_protocol_upgrade_bps = Some(5000);
+                cfg.feature_flags.consensus_order_end_of_epoch_last = true;
                 cfg
             }
             // Use this template when making changes:

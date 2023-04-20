@@ -770,12 +770,7 @@ impl Builder {
         let committee = Self::committee(&objects);
 
         let checkpoint = {
-            let signatures = self
-                .signatures
-                .clone()
-                .into_iter()
-                .map(|(_, s)| s)
-                .collect();
+            let signatures = self.signatures.clone().into_values().collect();
 
             CertifiedCheckpointSummary::new(checkpoint, signatures, &committee).unwrap()
         };
@@ -1361,7 +1356,7 @@ fn create_genesis_transaction(
             protocol_config,
         );
 
-        let native_functions = sui_framework::natives::all_natives(/* silent */ true);
+        let native_functions = sui_move_natives::all_natives(/* silent */ true);
         let enable_move_vm_paranoid_checks = false;
         let move_vm = std::sync::Arc::new(
             adapter::new_move_vm(
@@ -1390,6 +1385,7 @@ fn create_genesis_transaction(
                 SuiGasStatus::new_unmetered(protocol_config),
                 epoch_data,
                 protocol_config,
+                false, // enable_expensive_checks
             );
         assert!(inner_temp_store.objects.is_empty());
         assert!(inner_temp_store.mutable_inputs.is_empty());
@@ -1420,7 +1416,7 @@ fn create_genesis_objects(
     let protocol_config =
         ProtocolConfig::get_for_version(ProtocolVersion::new(parameters.protocol_version));
 
-    let native_functions = sui_framework::natives::all_natives(/* silent */ true);
+    let native_functions = sui_move_natives::all_natives(/* silent */ true);
     // paranoid checks are a last line of defense for malicious code, no need to run them in genesis
     let enable_move_vm_paranoid_checks = false;
     let move_vm = adapter::new_move_vm(
@@ -1716,7 +1712,7 @@ impl TokenDistributionSchedule {
     ///
     /// The file is encoded such that the final entry in the CSV file is used to denote the
     /// allocation to the stake subsidy fund. It must be in the following format:
-    /// '0x0000000000000000000000000000000000000000000000000000000000000000,<amount to stake subsidy fund>,'
+    /// `0x0000000000000000000000000000000000000000000000000000000000000000,<amount to stake subsidy fund>,`
     ///
     /// All entries in a token distribution schedule must add up to 10B Sui.
     pub fn from_csv<R: std::io::Read>(reader: R) -> Result<Self> {
@@ -1904,12 +1900,11 @@ mod test {
 
     #[test]
     fn genesis_transaction() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let builder = crate::builder::ConfigBuilder::new(&dir);
-        let protocol_version = builder.protocol_version;
-        let protocol_config = ProtocolConfig::get_for_version(protocol_version);
+        let builder = crate::builder::ConfigBuilder::new_with_temp_dir();
         let network_config = builder.build();
         let genesis = network_config.genesis;
+        let protocol_version = ProtocolVersion::new(genesis.sui_system_object().protocol_version());
+        let protocol_config = ProtocolConfig::get_for_version(protocol_version);
 
         let genesis_transaction = genesis.transaction.clone();
 
@@ -1922,7 +1917,7 @@ mod test {
         );
 
         let enable_move_vm_paranoid_checks = false;
-        let native_functions = sui_framework::natives::all_natives(/* silent */ true);
+        let native_functions = sui_move_natives::all_natives(/* silent */ true);
         let move_vm = std::sync::Arc::new(
             adapter::new_move_vm(
                 native_functions,
@@ -1950,6 +1945,7 @@ mod test {
                 SuiGasStatus::new_unmetered(&protocol_config),
                 &EpochData::new_test(),
                 &protocol_config,
+                false, // enable_expensive_checks
             );
 
         assert_eq!(effects, genesis.effects);

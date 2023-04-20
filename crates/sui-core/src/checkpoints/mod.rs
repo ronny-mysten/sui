@@ -449,6 +449,7 @@ pub struct CheckpointSignatureAggregator {
     summary: CheckpointSummary,
     digest: CheckpointDigest,
     signatures: StakeAggregator<AuthoritySignInfo, true>,
+    failures: StakeAggregator<AuthoritySignInfo, false>,
 }
 
 impl CheckpointBuilder {
@@ -957,7 +958,7 @@ impl CheckpointAggregator {
     async fn run(mut self) {
         info!("Starting CheckpointAggregator");
         loop {
-            if let Err(e) = self.run_inner().await {
+            if let Err(e) = self.run_and_notify().await {
                 error!(
                     "Error while aggregating checkpoint, will retry in 1s: {:?}",
                     e
@@ -983,8 +984,17 @@ impl CheckpointAggregator {
         }
     }
 
-    async fn run_inner(&mut self) -> SuiResult {
+    async fn run_and_notify(&mut self) -> SuiResult {
+        let summaries = self.run_inner()?;
+        for summary in summaries {
+            self.output.certified_checkpoint_created(&summary).await?;
+        }
+        Ok(())
+    }
+
+    fn run_inner(&mut self) -> SuiResult<Vec<CertifiedCheckpointSummary>> {
         let _scope = monitored_scope("CheckpointAggregator");
+        let mut result = vec![];
         'outer: loop {
             let next_to_certify = self.next_checkpoint_to_certify();
             let current = if let Some(current) = &mut self.current {
@@ -999,14 +1009,13 @@ impl CheckpointAggregator {
                 }
                 current
             } else {
-                let Some(summary) = self.epoch_store.get_built_checkpoint_summary(next_to_certify)? else { return Ok(()); };
+                let Some(summary) = self.epoch_store.get_built_checkpoint_summary(next_to_certify)? else { return Ok(result); };
                 self.current = Some(CheckpointSignatureAggregator {
                     next_index: 0,
                     digest: summary.digest(),
                     summary,
-                    signatures: StakeAggregator::new(Arc::new(
-                        self.epoch_store.committee().clone(),
-                    )),
+                    signatures: StakeAggregator::new(self.epoch_store.committee().clone()),
+                    failures: StakeAggregator::new(self.epoch_store.committee().clone()),
                 });
                 self.current.as_mut().unwrap()
             };
@@ -1021,7 +1030,7 @@ impl CheckpointAggregator {
                         current.summary.sequence_number
                     );
                     // No more signatures (yet) for this checkpoint
-                    return Ok(());
+                    return Ok(result);
                 }
                 debug!(
                     "Processing signature for checkpoint {} (digest: {:?}) from {:?}",
@@ -1048,7 +1057,7 @@ impl CheckpointAggregator {
                     self.metrics
                         .last_certified_checkpoint
                         .set(current.summary.sequence_number as i64);
-                    self.output.certified_checkpoint_created(&summary).await?;
+                    result.push(summary.into_inner());
                     self.current = None;
                     continue 'outer;
                 } else {
@@ -1057,7 +1066,7 @@ impl CheckpointAggregator {
             }
             break;
         }
-        Ok(())
+        Ok(result)
     }
 
     fn next_checkpoint_to_certify(&self) -> CheckpointSequenceNumber {
@@ -1082,6 +1091,15 @@ impl CheckpointSignatureAggregator {
         let author = signature.authority;
         // consensus ensures that authority == narwhal_cert.author
         if their_digest != self.digest {
+            if let InsertResult::QuorumReached(data) =
+                self.failures.insert_generic(author, signature)
+            {
+                panic!("Checkpoint fork detected - f+1 validators submitted checkpoint digest at seq {} different from our digest {}. Validators with different digests: {:?}",
+                       self.summary.sequence_number,
+                       self.digest,
+                        data.keys()
+                );
+            }
             warn!(
                 "Validator {:?} has mismatching checkpoint digest {} at seq {}, we have digest {}",
                 author.concise(),
@@ -1277,9 +1295,8 @@ impl CheckpointServiceNotify for CheckpointService {
     }
 }
 
-#[cfg(test)]
+// test helper
 pub struct CheckpointServiceNoop {}
-#[cfg(test)]
 impl CheckpointServiceNotify for CheckpointServiceNoop {
     fn notify_checkpoint_signature(
         &self,
@@ -1303,6 +1320,7 @@ impl PendingCheckpoint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::authority::test_authority_builder::TestAuthorityBuilder;
     use crate::state_accumulator::StateAccumulator;
     use async_trait::async_trait;
     use fastcrypto::traits::KeyPair;
@@ -1326,8 +1344,9 @@ mod tests {
         let keypair = network_config.validator_configs[0]
             .protocol_key_pair()
             .copy();
-        let state =
-            AuthorityState::new_for_testing(committee.clone(), &keypair, None, &genesis).await;
+        let state = TestAuthorityBuilder::new()
+            .build(committee.clone(), &keypair, &genesis)
+            .await;
 
         let dummy_tx = VerifiedTransaction::new_genesis_transaction(vec![]);
         let dummy_tx_with_data =

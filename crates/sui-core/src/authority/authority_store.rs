@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::cmp::Ordering;
-use std::iter;
 use std::ops::Not;
 use std::path::Path;
 use std::sync::Arc;
+use std::{iter, mem, thread};
 
 use either::Either;
 use fastcrypto::hash::MultisetHash;
+use futures::stream::FuturesUnordered;
 use move_bytecode_utils::module_cache::GetModule;
 use move_core_types::resolver::ModuleResolver;
 use once_cell::sync::OnceCell;
@@ -16,6 +17,7 @@ use rocksdb::Options;
 use serde::{Deserialize, Serialize};
 use sui_types::messages_checkpoint::ECMHLiveObjectSetDigest;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::time::Instant;
 use tracing::{debug, info, trace};
 
 use sui_protocol_config::ProtocolConfig;
@@ -37,14 +39,63 @@ use crate::authority::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::authority::authority_store_types::{
     get_store_object_pair, ObjectContentDigest, StoreObject, StoreObjectPair, StoreObjectWrapper,
 };
-use crate::authority::epoch_start_configuration::EpochStartConfiguration;
+use crate::authority::epoch_start_configuration::{EpochFlag, EpochStartConfiguration};
 
 use super::authority_store_tables::LiveObject;
 use super::{authority_store_tables::AuthorityPerpetualTables, *};
 use mysten_common::sync::notify_read::NotifyRead;
+use sui_storage::package_object_cache::PackageObjectCache;
+use sui_types::gas_coin::TOTAL_SUPPLY_MIST;
 use typed_store::rocks::util::is_ref_count_value;
 
 const NUM_SHARDS: usize = 4096;
+
+struct AuthorityStoreMetrics {
+    sui_conservation_check_latency: IntGauge,
+    sui_conservation_live_object_count: IntGauge,
+    sui_conservation_imbalance: IntGauge,
+    sui_conservation_storage_fund: IntGauge,
+    sui_conservation_storage_fund_imbalance: IntGauge,
+    epoch_flags: IntGaugeVec,
+}
+
+impl AuthorityStoreMetrics {
+    pub fn new(registry: &Registry) -> Self {
+        Self {
+            sui_conservation_check_latency: register_int_gauge_with_registry!(
+                "sui_conservation_check_latency",
+                "Number of seconds took to scan all live objects in the store for SUI conservation check",
+                registry,
+            ).unwrap(),
+            sui_conservation_live_object_count: register_int_gauge_with_registry!(
+                "sui_conservation_live_object_count",
+                "Number of live objects in the store",
+                registry,
+            ).unwrap(),
+            sui_conservation_imbalance: register_int_gauge_with_registry!(
+                "sui_conservation_imbalance",
+                "Total amount of SUI in the network - 10B * 10^9. This delta shows the amount of imbalance",
+                registry,
+            ).unwrap(),
+            sui_conservation_storage_fund: register_int_gauge_with_registry!(
+                "sui_conservation_storage_fund",
+                "Storage Fund pool balance (only includes the storage fund proper that represents object storage)",
+                registry,
+            ).unwrap(),
+            sui_conservation_storage_fund_imbalance: register_int_gauge_with_registry!(
+                "sui_conservation_storage_fund_imbalance",
+                "Imbalance of storage fund, computed with storage_fund_balance - total_object_storage_rebates",
+                registry,
+            ).unwrap(),
+            epoch_flags: register_int_gauge_vec_with_registry!(
+                "epoch_flags",
+                "Local flags of the currently running epoch",
+                &["flag"],
+                registry,
+            ).unwrap(),
+        }
+    }
+}
 
 /// ALL_OBJ_VER determines whether we want to store all past
 /// versions of every object in the store. Authority doesn't store
@@ -75,6 +126,8 @@ pub struct AuthorityStore {
 
     /// Whether to enable expensive SUI conservation check at epoch boundaries.
     enable_epoch_sui_conservation_check: bool,
+
+    metrics: AuthorityStoreMetrics,
 }
 
 pub type ExecutionLockReadGuard<'a> = RwLockReadGuard<'a, EpochId>;
@@ -90,29 +143,54 @@ impl AuthorityStore {
         committee_store: &Arc<CommitteeStore>,
         indirect_objects_threshold: usize,
         enable_epoch_sui_conservation_check: bool,
-    ) -> SuiResult<Self> {
+        registry: &Registry,
+    ) -> SuiResult<Arc<Self>> {
         let perpetual_tables = Arc::new(AuthorityPerpetualTables::open(path, db_options.clone()));
-        if perpetual_tables.database_is_empty()? {
-            let epoch_start_configuration = EpochStartConfiguration::new_v1(
+        let epoch_start_configuration = if perpetual_tables.database_is_empty()? {
+            let epoch_start_configuration = EpochStartConfiguration::new(
                 genesis.sui_system_object().into_epoch_start_state(),
                 *genesis.checkpoint().digest(),
             );
             perpetual_tables
                 .set_epoch_start_configuration(&epoch_start_configuration)
                 .await?;
-        }
+            epoch_start_configuration
+        } else {
+            perpetual_tables
+                .epoch_start_configuration
+                .get(&())?
+                .expect("Epoch start configuration must be set in non-empty DB")
+        };
         let cur_epoch = perpetual_tables.get_recovery_epoch_at_restart()?;
         let committee = committee_store
             .get_committee(&cur_epoch)?
             .expect("Committee of the current epoch must exist");
-        Self::open_inner(
+        let this = Self::open_inner(
             genesis,
             perpetual_tables,
             &committee,
             indirect_objects_threshold,
             enable_epoch_sui_conservation_check,
+            registry,
         )
-        .await
+        .await?;
+        this.update_epoch_flags_metrics(&[], epoch_start_configuration.flags());
+        Ok(this)
+    }
+
+    pub fn update_epoch_flags_metrics(&self, old: &[EpochFlag], new: &[EpochFlag]) {
+        for flag in old {
+            self.metrics
+                .epoch_flags
+                .with_label_values(&[&flag.to_string()])
+                .set(0);
+        }
+        for flag in new {
+            self.metrics
+                .epoch_flags
+                .with_label_values(&[&flag.to_string()])
+                .set(1);
+        }
     }
 
     pub async fn open_with_committee_for_testing(
@@ -121,7 +199,7 @@ impl AuthorityStore {
         committee: &Committee,
         genesis: &Genesis,
         indirect_objects_threshold: usize,
-    ) -> SuiResult<Self> {
+    ) -> SuiResult<Arc<Self>> {
         // TODO: Since we always start at genesis, the committee should be technically the same
         // as the genesis committee.
         assert_eq!(committee.epoch, 0);
@@ -132,6 +210,7 @@ impl AuthorityStore {
             committee,
             indirect_objects_threshold,
             true,
+            &Registry::new(),
         )
         .await
     }
@@ -142,10 +221,11 @@ impl AuthorityStore {
         committee: &Committee,
         indirect_objects_threshold: usize,
         enable_epoch_sui_conservation_check: bool,
-    ) -> SuiResult<Self> {
+        registry: &Registry,
+    ) -> SuiResult<Arc<Self>> {
         let epoch = committee.epoch;
 
-        let store = Self {
+        let store = Arc::new(Self {
             mutex_table: MutexTable::new(NUM_SHARDS),
             perpetual_tables,
             executed_effects_notify_read: NotifyRead::new(),
@@ -155,7 +235,8 @@ impl AuthorityStore {
             objects_lock_table: Arc::new(RwLockTable::new(NUM_SHARDS)),
             indirect_objects_threshold,
             enable_epoch_sui_conservation_check,
-        };
+            metrics: AuthorityStoreMetrics::new(registry),
+        });
         // Only initialize an empty database.
         if store
             .database_is_empty()
@@ -411,12 +492,15 @@ impl AuthorityStore {
         &self,
         object_keys: &[ObjectKey],
     ) -> Result<Vec<Option<Object>>, SuiError> {
-        let wrappers = self.perpetual_tables.objects.multi_get(object_keys)?;
+        let wrappers = self
+            .perpetual_tables
+            .objects
+            .multi_get(object_keys.to_vec())?;
         let mut ret = vec![];
 
-        for w in wrappers {
+        for (idx, w) in wrappers.into_iter().enumerate() {
             ret.push(
-                w.map(|object| self.perpetual_tables.object(object))
+                w.map(|object| self.perpetual_tables.object(&object_keys[idx], object))
                     .transpose()?
                     .flatten(),
             );
@@ -792,6 +876,7 @@ impl AuthorityStore {
             deleted,
             events,
             max_binary_format_version: _,
+            loaded_child_objects: _,
         } = inner_temporary_store;
         trace!(written =? written.values().map(|((obj_id, ver, _), _, _)| (obj_id, ver)).collect::<Vec<_>>(),
                "batch_update_objects: temp store written");
@@ -1216,6 +1301,7 @@ impl AuthorityStore {
                         let obj = self
                             .perpetual_tables
                             .object(
+                                &key,
                                 obj_opt
                                     .expect(&format!("Older object version not found: {:?}", key)),
                             )
@@ -1369,7 +1455,7 @@ impl AuthorityStore {
         self.perpetual_tables.iter_live_object_set()
     }
 
-    pub fn expensive_check_sui_conservation(&self) -> SuiResult {
+    pub fn expensive_check_sui_conservation(self: &Arc<Self>) -> SuiResult {
         if !self.enable_epoch_sui_conservation_check {
             return Ok(());
         }
@@ -1383,30 +1469,85 @@ impl AuthorityStore {
             return Ok(());
         }
 
-        let mut total_storage_rebate = 0;
-        let mut total_sui = 0;
-        for o in self.iter_live_object_set() {
-            match o {
-                LiveObject::Normal(object) => {
-                    total_storage_rebate += object.storage_rebate;
-                    // get_total_sui includes storage rebate, however all storage rebate is
-                    // also stored in the storage fund, so we need to subtract it here.
-                    total_sui += object.get_total_sui(self)? - object.storage_rebate;
+        info!("Starting SUI conservation check. This may take a while..");
+        let cur_time = Instant::now();
+        let mut pending_objects = vec![];
+        let mut count = 0;
+        let package_cache = PackageObjectCache::new(self.clone());
+        let (mut total_sui, mut total_storage_rebate) = thread::scope(|s| {
+            let pending_tasks = FuturesUnordered::new();
+            for o in self.iter_live_object_set() {
+                match o {
+                    LiveObject::Normal(object) => {
+                        pending_objects.push(object);
+                        count += 1;
+                        if count % 1_000_000 == 0 {
+                            let mut task_objects = vec![];
+                            mem::swap(&mut pending_objects, &mut task_objects);
+                            let package_cache_clone = package_cache.clone();
+                            pending_tasks.push(s.spawn(move || {
+                                let mut total_storage_rebate = 0;
+                                let mut total_sui = 0;
+                                for object in task_objects {
+                                    total_storage_rebate += object.storage_rebate;
+                                    // get_total_sui includes storage rebate, however all storage rebate is
+                                    // also stored in the storage fund, so we need to subtract it here.
+                                    total_sui +=
+                                        object.get_total_sui(&package_cache_clone).unwrap()
+                                            - object.storage_rebate;
+                                }
+                                if count % 50_000_000 == 0 {
+                                    info!("Processed {} objects", count);
+                                }
+                                (total_sui, total_storage_rebate)
+                            }));
+                        }
+                    }
+                    LiveObject::Wrapped(_) => (),
                 }
-                LiveObject::Wrapped(_) => (),
             }
+            pending_tasks.into_iter().fold((0, 0), |init, result| {
+                let result = result.join().unwrap();
+                (init.0 + result.0, init.1 + result.1)
+            })
+        });
+        for object in pending_objects {
+            total_storage_rebate += object.storage_rebate;
+            total_sui += object.get_total_sui(self).unwrap() - object.storage_rebate;
         }
+        info!(
+            "Scanned {} live objects, took {:?}",
+            count,
+            cur_time.elapsed()
+        );
+        self.metrics
+            .sui_conservation_live_object_count
+            .set(count as i64);
+        self.metrics
+            .sui_conservation_check_latency
+            .set(cur_time.elapsed().as_secs() as i64);
+
         let system_state = self
             .get_sui_system_state_object()
             .expect("Reading sui system state object cannot fail")
             .into_sui_system_state_summary();
+        let storage_fund_balance = system_state.storage_fund_total_object_storage_rebates;
         info!(
-            "Total SUI amount in the network: {}, total storage rebate: {} at beginning of epoch {}",
-            total_sui, total_storage_rebate, system_state.epoch
+            "Total SUI amount in the network: {}, storage fund balance: {}, total storage rebate: {} at beginning of epoch {}",
+            total_sui, storage_fund_balance, total_storage_rebate, system_state.epoch
         );
 
-        let storage_fund_balance = system_state.storage_fund_total_object_storage_rebates;
         let imbalance = (storage_fund_balance as i64) - (total_storage_rebate as i64);
+        self.metrics
+            .sui_conservation_storage_fund
+            .set(storage_fund_balance as i64);
+        self.metrics
+            .sui_conservation_storage_fund_imbalance
+            .set(imbalance);
+        self.metrics
+            .sui_conservation_imbalance
+            .set((total_sui as i128 - TOTAL_SUPPLY_MIST as i128) as i64);
+
         if let Some(expected_imbalance) = self
             .perpetual_tables
             .expected_storage_fund_imbalance
@@ -1515,13 +1656,7 @@ impl ObjectStore for AuthorityStore {
         object_id: &ObjectID,
         version: VersionNumber,
     ) -> Result<Option<Object>, SuiError> {
-        Ok(self
-            .perpetual_tables
-            .objects
-            .get(&ObjectKey(*object_id, version))?
-            .map(|object| self.perpetual_tables.object(object))
-            .transpose()?
-            .flatten())
+        self.perpetual_tables.get_object_by_key(object_id, version)
     }
 }
 

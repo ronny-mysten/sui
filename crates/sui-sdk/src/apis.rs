@@ -12,10 +12,13 @@ use futures::StreamExt;
 use futures_core::Stream;
 use jsonrpsee::core::client::Subscription;
 
+use crate::error::{Error, SuiRpcResult};
+use crate::{RpcClient, WAIT_FOR_TX_TIMEOUT_SEC};
 use sui_json_rpc::api::GovernanceReadApiClient;
 use sui_json_rpc::api::{
     CoinReadApiClient, IndexerApiClient, MoveUtilsClient, ReadApiClient, WriteApiClient,
 };
+use sui_json_rpc_types::SuiLoadedChildObjectsResponse;
 use sui_json_rpc_types::{
     Balance, Checkpoint, CheckpointId, Coin, CoinPage, DelegatedStake,
     DryRunTransactionBlockResponse, DynamicFieldPage, EventFilter, EventPage, ObjectsPage,
@@ -33,9 +36,6 @@ use sui_types::messages::{ExecuteTransactionRequestType, TransactionData, Verifi
 use sui_types::messages_checkpoint::CheckpointSequenceNumber;
 use sui_types::sui_serde::BigInt;
 use sui_types::sui_system_state::sui_system_state_summary::SuiSystemStateSummary;
-
-use crate::error::{Error, SuiRpcResult};
-use crate::{RpcClient, WAIT_FOR_TX_TIMEOUT_SEC};
 
 #[derive(Debug)]
 pub struct ReadApi {
@@ -242,6 +242,13 @@ impl ReadApi {
             .dry_run_transaction_block(Base64::from_bytes(&bcs::to_bytes(&tx)?))
             .await?)
     }
+
+    pub async fn get_loaded_child_objects(
+        &self,
+        digest: TransactionDigest,
+    ) -> SuiRpcResult<SuiLoadedChildObjectsResponse> {
+        Ok(self.api.http.get_loaded_child_objects(digest).await?)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -346,7 +353,10 @@ impl CoinReadApi {
         Ok(self.api.http.get_all_balances(owner).await?)
     }
 
-    pub async fn get_coin_metadata(&self, coin_type: String) -> SuiRpcResult<SuiCoinMetadata> {
+    pub async fn get_coin_metadata(
+        &self,
+        coin_type: String,
+    ) -> SuiRpcResult<Option<SuiCoinMetadata>> {
         Ok(self.api.http.get_coin_metadata(coin_type).await?)
     }
 

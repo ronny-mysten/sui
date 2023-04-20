@@ -17,8 +17,6 @@ import {
   SuiTransactionBlockResponse,
   TransactionDigest,
   SuiTransactionBlockResponseQuery,
-  RpcApiVersion,
-  parseVersionFromString,
   PaginatedEvents,
   FaucetResponse,
   Order,
@@ -62,8 +60,7 @@ import { CheckpointPage } from '../types/checkpoints';
 import { RPCError } from '../utils/errors';
 import { NetworkMetrics } from '../types/metrics';
 import { EpochInfo, EpochPage } from '../types/epochs';
-
-export const TARGETED_RPC_VERSION = '0.29.0';
+import { lt } from '@suchipi/femver';
 
 export interface PaginationArguments<Cursor> {
   /** Optional paging cursor */
@@ -82,18 +79,6 @@ export interface OrderArguments {
  */
 export type RpcProviderOptions = {
   /**
-   * Default to `true`. If set to `false`, the rpc
-   * client will throw an error if the responses from the RPC server do not
-   * conform to the schema defined in the TypeScript SDK. If set to `true`, the
-   * rpc client will log the mismatch as a warning message instead of throwing an
-   * error. The mismatches often happen when the SDK is in a different version than
-   * the RPC server. Skipping the validation can maximize
-   * the version compatibility of the SDK, as not all the schema
-   * changes in the RPC response will affect the caller, but the caller needs to
-   * understand that the data may not match the TypeSrcript definitions.
-   */
-  skipDataValidation?: boolean;
-  /**
    * Configuration options for the websocket connection
    * TODO: Move to connection.
    */
@@ -111,7 +96,6 @@ export type RpcProviderOptions = {
 };
 
 const DEFAULT_OPTIONS: RpcProviderOptions = {
-  skipDataValidation: true,
   socketOptions: DEFAULT_CLIENT_OPTIONS,
   versionCacheTimeoutInSeconds: 600,
 };
@@ -120,7 +104,7 @@ export class JsonRpcProvider {
   public connection: Connection;
   protected client: JsonRpcClient;
   protected wsClient: WebsocketClient;
-  private rpcApiVersion: RpcApiVersion | undefined;
+  private rpcApiVersion: string | undefined;
   private cacheExpiry: number | undefined;
   /**
    * Establish a connection to a Sui RPC endpoint
@@ -142,14 +126,10 @@ export class JsonRpcProvider {
 
     this.wsClient =
       opts.websocketClient ??
-      new WebsocketClient(
-        this.connection.websocket,
-        opts.skipDataValidation!,
-        opts.socketOptions,
-      );
+      new WebsocketClient(this.connection.websocket, opts.socketOptions);
   }
 
-  async getRpcApiVersion(): Promise<RpcApiVersion | undefined> {
+  async getRpcApiVersion(): Promise<string | undefined> {
     if (
       this.rpcApiVersion &&
       this.cacheExpiry &&
@@ -157,14 +137,10 @@ export class JsonRpcProvider {
     ) {
       return this.rpcApiVersion;
     }
+
     try {
-      const resp = await this.client.requestWithType(
-        'rpc.discover',
-        [],
-        any(),
-        this.options.skipDataValidation,
-      );
-      this.rpcApiVersion = parseVersionFromString(resp.info.version);
+      const resp = await this.client.requestWithType('rpc.discover', [], any());
+      this.rpcApiVersion = resp.info.version;
       this.cacheExpiry =
         // Date.now() is in milliseconds, but the timeout is in seconds
         Date.now() + (this.options.versionCacheTimeoutInSeconds ?? 0) * 1000;
@@ -188,12 +164,12 @@ export class JsonRpcProvider {
   /**
    * Get all Coin<`coin_type`> objects owned by an address.
    */
-  async getCoins(input: {
-    owner: SuiAddress;
-    coinType?: string | null;
-    cursor?: ObjectId | null;
-    limit?: number | null;
-  }): Promise<PaginatedCoins> {
+  async getCoins(
+    input: {
+      owner: SuiAddress;
+      coinType?: string | null;
+    } & PaginationArguments<PaginatedCoins['nextCursor']>,
+  ): Promise<PaginatedCoins> {
     if (!input.owner || !isValidSuiAddress(normalizeSuiAddress(input.owner))) {
       throw new Error('Invalid Sui address');
     }
@@ -202,7 +178,6 @@ export class JsonRpcProvider {
       'suix_getCoins',
       [input.owner, input.coinType, input.cursor, input.limit],
       PaginatedCoins,
-      this.options.skipDataValidation,
     );
   }
 
@@ -222,7 +197,6 @@ export class JsonRpcProvider {
       'suix_getAllCoins',
       [input.owner, input.cursor, input.limit],
       PaginatedCoins,
-      this.options.skipDataValidation,
     );
   }
 
@@ -241,12 +215,11 @@ export class JsonRpcProvider {
       'suix_getBalance',
       [input.owner, input.coinType],
       CoinBalance,
-      this.options.skipDataValidation,
     );
   }
 
   /**
-   * Get the total coin balance for all coin type, owned by the address owner.
+   * Get the total coin balance for all coin types, owned by the address owner.
    */
   async getAllBalances(input: { owner: SuiAddress }): Promise<CoinBalance[]> {
     if (!input.owner || !isValidSuiAddress(normalizeSuiAddress(input.owner))) {
@@ -256,19 +229,19 @@ export class JsonRpcProvider {
       'suix_getAllBalances',
       [input.owner],
       array(CoinBalance),
-      this.options.skipDataValidation,
     );
   }
 
   /**
    * Fetch CoinMetadata for a given coin type
    */
-  async getCoinMetadata(input: { coinType: string }): Promise<CoinMetadata> {
+  async getCoinMetadata(input: {
+    coinType: string;
+  }): Promise<CoinMetadata | null> {
     return await this.client.requestWithType(
       'suix_getCoinMetadata',
       [input.coinType],
       CoinMetadataStruct,
-      this.options.skipDataValidation,
     );
   }
 
@@ -280,7 +253,6 @@ export class JsonRpcProvider {
       'suix_getTotalSupply',
       [input.coinType],
       CoinSupply,
-      this.options.skipDataValidation,
     );
   }
 
@@ -314,7 +286,6 @@ export class JsonRpcProvider {
       'sui_getMoveFunctionArgTypes',
       [input.package, input.module, input.function],
       SuiMoveFunctionArgTypes,
-      this.options.skipDataValidation,
     );
   }
 
@@ -329,7 +300,6 @@ export class JsonRpcProvider {
       'sui_getNormalizedMoveModulesByPackage',
       [input.package],
       SuiMoveNormalizedModules,
-      this.options.skipDataValidation,
     );
   }
 
@@ -344,7 +314,6 @@ export class JsonRpcProvider {
       'sui_getNormalizedMoveModule',
       [input.package, input.module],
       SuiMoveNormalizedModule,
-      this.options.skipDataValidation,
     );
   }
 
@@ -360,7 +329,6 @@ export class JsonRpcProvider {
       'sui_getNormalizedMoveFunction',
       [input.package, input.module, input.function],
       SuiMoveNormalizedFunction,
-      this.options.skipDataValidation,
     );
   }
 
@@ -376,7 +344,6 @@ export class JsonRpcProvider {
       'sui_getNormalizedMoveStruct',
       [input.package, input.module, input.struct],
       SuiMoveNormalizedStruct,
-      this.options.skipDataValidation,
     );
   }
 
@@ -405,7 +372,6 @@ export class JsonRpcProvider {
         input.limit,
       ],
       PaginatedObjectsResponse,
-      this.options.skipDataValidation,
     );
   }
 
@@ -423,7 +389,6 @@ export class JsonRpcProvider {
       'sui_getObject',
       [input.id, input.options],
       SuiObjectResponse,
-      this.options.skipDataValidation,
     );
   }
 
@@ -448,7 +413,6 @@ export class JsonRpcProvider {
       'sui_multiGetObjects',
       [input.ids, input.options],
       array(SuiObjectResponse),
-      this.options.skipDataValidation,
     );
   }
 
@@ -472,7 +436,6 @@ export class JsonRpcProvider {
         (input.order || 'descending') === 'descending',
       ],
       PaginatedTransactionResponse,
-      this.options.skipDataValidation,
     );
   }
 
@@ -487,7 +450,6 @@ export class JsonRpcProvider {
       'sui_getTransactionBlock',
       [input.digest, input.options],
       SuiTransactionBlockResponse,
-      this.options.skipDataValidation,
     );
   }
 
@@ -510,7 +472,6 @@ export class JsonRpcProvider {
       'sui_multiGetTransactionBlocks',
       [input.digests, input.options],
       array(SuiTransactionBlockResponse),
-      this.options.skipDataValidation,
     );
   }
 
@@ -531,7 +492,6 @@ export class JsonRpcProvider {
         input.requestType,
       ],
       SuiTransactionBlockResponse,
-      this.options.skipDataValidation,
     );
   }
 
@@ -544,7 +504,6 @@ export class JsonRpcProvider {
       'sui_getTotalTransactionBlocks',
       [],
       string(),
-      this.options.skipDataValidation,
     );
     return BigInt(resp);
   }
@@ -557,7 +516,6 @@ export class JsonRpcProvider {
       'suix_getReferenceGasPrice',
       [],
       string(),
-      this.options.skipDataValidation,
     );
     return BigInt(resp);
   }
@@ -573,7 +531,6 @@ export class JsonRpcProvider {
       'suix_getStakes',
       [input.owner],
       array(DelegatedStake),
-      this.options.skipDataValidation,
     );
   }
 
@@ -592,7 +549,6 @@ export class JsonRpcProvider {
       'suix_getStakesByIds',
       [input.stakedSuiIds],
       array(DelegatedStake),
-      this.options.skipDataValidation,
     );
   }
 
@@ -604,7 +560,6 @@ export class JsonRpcProvider {
       'suix_getLatestSuiSystemState',
       [],
       SuiSystemStateSummary,
-      this.options.skipDataValidation,
     );
   }
 
@@ -627,7 +582,6 @@ export class JsonRpcProvider {
         (input.order || 'descending') === 'descending',
       ],
       PaginatedEvents,
-      this.options.skipDataValidation,
     );
   }
 
@@ -687,7 +641,6 @@ export class JsonRpcProvider {
       'sui_devInspectTransactionBlock',
       [input.sender, devInspectTxBytes, input.gasPrice, input.epoch],
       DevInspectResults,
-      this.options.skipDataValidation,
     );
   }
 
@@ -705,7 +658,6 @@ export class JsonRpcProvider {
           : toB64(input.transactionBlock),
       ],
       DryRunTransactionBlockResponse,
-      this.options.skipDataValidation,
     );
   }
 
@@ -728,7 +680,6 @@ export class JsonRpcProvider {
       'suix_getDynamicFields',
       [input.parentId, input.cursor, input.limit],
       DynamicFieldPage,
-      this.options.skipDataValidation,
     );
   }
 
@@ -745,7 +696,6 @@ export class JsonRpcProvider {
       'suix_getDynamicFieldObject',
       [input.parentId, input.name],
       SuiObjectResponse,
-      this.options.skipDataValidation,
     );
   }
 
@@ -757,7 +707,6 @@ export class JsonRpcProvider {
       'sui_getLatestCheckpointSequenceNumber',
       [],
       string(),
-      this.options.skipDataValidation,
     );
     return String(resp);
   }
@@ -773,29 +722,27 @@ export class JsonRpcProvider {
       'sui_getCheckpoint',
       [input.id],
       Checkpoint,
-      this.options.skipDataValidation,
     );
   }
 
   /**
    * Returns historical checkpoints paginated
    */
-  async getCheckpoints(input: {
-    /**
-     * An optional paging cursor. If provided, the query will start from the next item after the specified cursor.
-     * Default to start from the first item if not specified.
-     */
-    cursor?: string;
-    /** Maximum item returned per page, default to 100 if not specified. */
-    limit?: string;
-    /** query result ordering, default to false (ascending order), oldest record first */
-    descendingOrder: boolean;
-  }): Promise<CheckpointPage> {
+  async getCheckpoints(
+    input: {
+      /** query result ordering, default to false (ascending order), oldest record first */
+      descendingOrder: boolean;
+    } & PaginationArguments<CheckpointPage['nextCursor']>,
+  ): Promise<CheckpointPage> {
+    const version = await this.getRpcApiVersion();
     const resp = await this.client.requestWithType(
       'sui_getCheckpoints',
-      [input.cursor, input.limit, input.descendingOrder],
+      [
+        input.cursor,
+        version && lt(version, '0.32.0') ? String(input?.limit) : input?.limit,
+        input.descendingOrder,
+      ],
       CheckpointPage,
-      this.options.skipDataValidation,
     );
     return resp;
   }
@@ -824,16 +771,20 @@ export class JsonRpcProvider {
   /**
    * Return the committee information for the asked epoch
    */
-  async getEpochs(input?: {
-    cursor?: string;
-    limit?: string;
-    descendingOrder?: boolean;
-  }): Promise<EpochPage> {
+  async getEpochs(
+    input?: {
+      descendingOrder?: boolean;
+    } & PaginationArguments<EpochPage['nextCursor']>,
+  ): Promise<EpochPage> {
+    const version = await this.getRpcApiVersion();
     return await this.client.requestWithType(
       'suix_getEpochs',
-      [input?.cursor, input?.limit, input?.descendingOrder],
+      [
+        input?.cursor,
+        version && lt(version, '0.32.0') ? String(input?.limit) : input?.limit,
+        input?.descendingOrder,
+      ],
       EpochPage,
-      this.options.skipDataValidation,
     );
   }
   /**
@@ -844,7 +795,6 @@ export class JsonRpcProvider {
       'suix_getCurrentEpoch',
       [],
       EpochInfo,
-      this.options.skipDataValidation,
     );
   }
 }

@@ -125,28 +125,23 @@ impl TransactionExecutionApi {
 
                 let object_cache = ObjectProviderCache::new(self.state.clone());
                 let balance_changes = if opts.show_balance_changes {
-                    Some(
-                        get_balance_changes_from_effect(
-                            &object_cache,
-                            &effects.effects,
-                            input_objs,
-                        )
-                        .await?,
-                    )
+                    Some(get_balance_changes_from_effect(
+                        &object_cache,
+                        &effects.effects,
+                        input_objs,
+                        None,
+                    )?)
                 } else {
                     None
                 };
                 let object_changes = if opts.show_object_changes {
-                    Some(
-                        get_object_changes(
-                            &object_cache,
-                            sender,
-                            effects.effects.modified_at_versions(),
-                            effects.effects.all_changed_objects(),
-                            effects.effects.all_deleted(),
-                        )
-                        .await?,
-                    )
+                    Some(get_object_changes(
+                        &object_cache,
+                        sender,
+                        effects.effects.modified_at_versions(),
+                        effects.effects.all_changed_objects(),
+                        effects.effects.all_deleted(),
+                    )?)
                 } else {
                     None
                 };
@@ -175,22 +170,24 @@ impl TransactionExecutionApi {
         let (txn_data, txn_digest) = get_transaction_data_and_digest(tx_bytes)?;
         let input_objs = txn_data.input_objects()?;
         let sender = txn_data.sender();
-        let (resp, written_objects, transaction_effects) = self
+        let (resp, written_objects, transaction_effects, mock_gas) = self
             .state
             .dry_exec_transaction(txn_data.clone(), txn_digest)
             .await?;
         let object_cache = ObjectProviderCache::new_with_cache(self.state.clone(), written_objects);
-        let balance_changes =
-            get_balance_changes_from_effect(&object_cache, &transaction_effects, input_objs)
-                .await?;
+        let balance_changes = get_balance_changes_from_effect(
+            &object_cache,
+            &transaction_effects,
+            input_objs,
+            mock_gas,
+        )?;
         let object_changes = get_object_changes(
             &object_cache,
             sender,
             transaction_effects.modified_at_versions(),
             transaction_effects.all_changed_objects(),
             transaction_effects.all_deleted(),
-        )
-        .await?;
+        )?;
 
         Ok(DryRunTransactionBlockResponse {
             effects: resp.effects,

@@ -15,12 +15,12 @@ use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 
 use crate::operations::Operations;
 use shared_crypto::intent::Intent;
-use sui_framework_build::compiled_package::BuildConfig;
 use sui_json_rpc_types::{
     ObjectChange, SuiObjectDataOptions, SuiObjectRef, SuiObjectResponseQuery,
 };
 use sui_keys::keystore::AccountKeystore;
 use sui_keys::keystore::Keystore;
+use sui_move_build::BuildConfig;
 use sui_sdk::rpc_types::{
     OwnedObjectRef, SuiData, SuiExecutionStatus, SuiTransactionBlockEffectsAPI,
     SuiTransactionBlockResponse,
@@ -136,10 +136,15 @@ async fn test_publish_and_move_call() {
 
     // Test publish
     let sender = get_random_address(&network.accounts, vec![]);
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../sui_programmability/examples/fungible_tokens");
-    let compiled_package =
-        sui_framework::build_move_package(&path, BuildConfig::new_for_testing()).unwrap();
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.extend([
+        "..",
+        "..",
+        "sui_programmability",
+        "examples",
+        "fungible_tokens",
+    ]);
+    let compiled_package = BuildConfig::new_for_testing().build(path).unwrap();
     let compiled_modules_bytes =
         compiled_package.get_package_bytes(/* with_unpublished_deps */ false);
     let dependencies = compiled_package.get_dependency_original_package_ids();

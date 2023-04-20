@@ -13,7 +13,6 @@ use std::time::Duration;
 use sui_config::genesis_config::DEFAULT_GAS_AMOUNT;
 use sui_config::genesis_config::DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT;
 use sui_config::SUI_KEYSTORE_FILENAME;
-use sui_framework_build::compiled_package::BuildConfig;
 use sui_json::{call_args, type_args};
 use sui_json_rpc_types::ObjectChange;
 use sui_json_rpc_types::ObjectsPage;
@@ -24,6 +23,7 @@ use sui_json_rpc_types::{
 };
 use sui_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
 use sui_macros::sim_test;
+use sui_move_build::BuildConfig;
 use sui_types::balance::Supply;
 use sui_types::base_types::ObjectID;
 use sui_types::base_types::SequenceNumber;
@@ -389,7 +389,18 @@ async fn test_get_coins() -> Result<(), anyhow::Error> {
             Some(3),
         )
         .await?;
-    assert_eq!(2, result.data.len());
+    assert_eq!(2, result.data.len(), "{:?}", result);
+    assert!(!result.has_next_page);
+
+    let result: CoinPage = http_client
+        .get_coins(
+            *address,
+            Some("0x2::sui::SUI".into()),
+            result.next_cursor,
+            None,
+        )
+        .await?;
+    assert_eq!(0, result.data.len(), "{:?}", result);
     assert!(!result.has_next_page);
 
     Ok(())
@@ -399,9 +410,9 @@ async fn test_get_coins() -> Result<(), anyhow::Error> {
 async fn test_get_balance() -> Result<(), anyhow::Error> {
     let cluster = TestClusterBuilder::new().build().await?;
     let http_client = cluster.rpc_client();
-    let address = cluster.accounts.first().unwrap();
+    let address = cluster.get_address_0();
 
-    let result: Balance = http_client.get_balance(*address, None).await?;
+    let result: Balance = http_client.get_balance(address, None).await?;
     assert_eq!("0x2::sui::SUI", result.coin_type);
     assert_eq!(
         (DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT as u64 * DEFAULT_GAS_AMOUNT) as u128,
@@ -411,7 +422,6 @@ async fn test_get_balance() -> Result<(), anyhow::Error> {
         DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT,
         result.coin_object_count
     );
-
     Ok(())
 }
 
@@ -488,7 +498,8 @@ async fn test_get_metadata() -> Result<(), anyhow::Error> {
 
     let result: SuiCoinMetadata = http_client
         .get_coin_metadata(format!("{package_id}::trusted_coin::TRUSTED_COIN"))
-        .await?;
+        .await?
+        .unwrap();
 
     assert_eq!("TRUSTED", result.symbol);
     assert_eq!("Trusted Coin for test", result.description);

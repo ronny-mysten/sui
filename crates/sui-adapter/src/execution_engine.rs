@@ -4,6 +4,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use crate::execution_mode::{self, ExecutionMode};
+use move_binary_format::access::ModuleAccess;
 use move_binary_format::CompiledModule;
 use move_bytecode_utils::module_cache::GetModule;
 use move_vm_runtime::move_vm::MoveVM;
@@ -13,6 +14,7 @@ use sui_types::balance::{
 };
 use sui_types::base_types::ObjectID;
 use sui_types::gas_coin::GAS;
+use sui_types::object::OBJECT_START_VERSION;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use tracing::{info, instrument, trace, warn};
 
@@ -20,12 +22,13 @@ use crate::programmable_transactions;
 use sui_macros::checked_arithmetic;
 use sui_protocol_config::{check_limit_by_meter, LimitThresholdCrossed, ProtocolConfig};
 use sui_types::clock::{CLOCK_MODULE_NAME, CONSENSUS_COMMIT_PROLOGUE_FUNCTION_NAME};
+use sui_types::committee::EpochId;
 use sui_types::epoch_data::EpochData;
 use sui_types::error::{ExecutionError, ExecutionErrorKind};
 use sui_types::gas::{GasCostSummary, SuiGasStatusAPI};
 use sui_types::messages::{
-    Argument, ConsensusCommitPrologue, GenesisTransaction, ObjectArg, ProgrammableTransaction,
-    TransactionKind,
+    Argument, Command, ConsensusCommitPrologue, GenesisTransaction, ObjectArg,
+    ProgrammableTransaction, TransactionKind,
 };
 use sui_types::storage::{ChildObjectResolver, ObjectStore, ParentSync, WriteKind};
 use sui_types::sui_system_state::{AdvanceEpochParams, ADVANCE_EPOCH_SAFE_MODE_FUNCTION_NAME};
@@ -41,7 +44,7 @@ use sui_types::{
 };
 use sui_types::{
     is_system_package, SUI_CLOCK_OBJECT_ID, SUI_CLOCK_OBJECT_SHARED_VERSION,
-    SUI_FRAMEWORK_OBJECT_ID, SUI_SYSTEM_PACKAGE_ID, SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
+    SUI_FRAMEWORK_OBJECT_ID, SUI_SYSTEM_OBJECT_ID, SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
 
 use sui_types::temporary_store::TemporaryStore;
@@ -57,6 +60,46 @@ pub fn execute_transaction_to_effects<
     S: BackingPackageStore + ParentSync + ChildObjectResolver + ObjectStore + GetModule,
 >(
     shared_object_refs: Vec<ObjectRef>,
+    temporary_store: TemporaryStore<S>,
+    transaction_kind: TransactionKind,
+    transaction_signer: SuiAddress,
+    gas: &[ObjectRef],
+    transaction_digest: TransactionDigest,
+    transaction_dependencies: BTreeSet<TransactionDigest>,
+    move_vm: &Arc<MoveVM>,
+    gas_status: SuiGasStatus,
+    epoch_data: &EpochData,
+    protocol_config: &ProtocolConfig,
+    enable_expensive_checks: bool
+) -> (
+    InnerTemporaryStore,
+    TransactionEffects,
+    Result<Mode::ExecutionResults, ExecutionError>,
+) {
+    // Separating out impl so we can call this from other context
+    execute_transaction_to_effects_impl::<Mode, S>(
+        shared_object_refs,
+        temporary_store,
+        transaction_kind,
+        transaction_signer,
+        gas,
+        transaction_digest,
+        transaction_dependencies,
+        move_vm,
+        gas_status,
+        &epoch_data.epoch_id(),
+        epoch_data.epoch_start_timestamp(),
+        protocol_config,
+        enable_expensive_checks
+    )
+}
+
+/// Separating out impl so we can call this from other context
+pub fn execute_transaction_to_effects_impl<
+    Mode: ExecutionMode,
+    S: BackingPackageStore + ParentSync + ChildObjectResolver + ObjectStore + GetModule,
+>(
+    shared_object_refs: Vec<ObjectRef>,
     mut temporary_store: TemporaryStore<S>,
     transaction_kind: TransactionKind,
     transaction_signer: SuiAddress,
@@ -65,14 +108,16 @@ pub fn execute_transaction_to_effects<
     mut transaction_dependencies: BTreeSet<TransactionDigest>,
     move_vm: &Arc<MoveVM>,
     gas_status: SuiGasStatus,
-    epoch_data: &EpochData,
+    epoch_id: &EpochId,
+    epoch_timestamp_ms: u64,
     protocol_config: &ProtocolConfig,
+    enable_expensive_checks: bool
 ) -> (
     InnerTemporaryStore,
     TransactionEffects,
     Result<Mode::ExecutionResults, ExecutionError>,
 ) {
-    let mut tx_ctx = TxContext::new(&transaction_signer, &transaction_digest, epoch_data);
+    let mut tx_ctx = TxContext::new_from_components(&transaction_signer, &transaction_digest, epoch_id, epoch_timestamp_ms);
 
     #[cfg(debug_assertions)]
     let is_epoch_change = matches!(transaction_kind, TransactionKind::ChangeEpoch(_));
@@ -85,6 +130,7 @@ pub fn execute_transaction_to_effects<
         move_vm,
         gas_status,
         protocol_config,
+        enable_expensive_checks
     );
 
     let status = if let Err(error) = &execution_result {
@@ -161,7 +207,7 @@ pub fn execute_transaction_to_effects<
         gas_cost_summary,
         status,
         gas,
-        epoch_data.epoch_id(),
+        *epoch_id,
     );
     (inner, effects, execution_result)
 }
@@ -193,6 +239,7 @@ fn execute_transaction<
     move_vm: &Arc<MoveVM>,
     mut gas_status: SuiGasStatus,
     protocol_config: &ProtocolConfig,
+    enable_expensive_checks: bool
 ) -> (
     GasCostSummary,
     Result<Mode::ExecutionResults, ExecutionError>,
@@ -308,45 +355,35 @@ fn execute_transaction<
         };
         let cost_summary =
             temporary_store.charge_gas(gas_object_id, &mut gas_status, &mut result, gas);
-         // === begin SUI conservation checks ===
-    // For advance epoch transaction, we need to provide epoch rewards and rebates as extra
-    // information provided to check_sui_conserved, because we mint rewards, and burn
-    // the rebates. We also need to pass in the unmetered_storage_rebate because storage
-    // rebate is not reflected in the storage_rebate of gas summary. This is a bit confusing.
-    // We could probably clean up the code a bit.
+        // === begin SUI conservation checks ===
+        // For advance epoch transaction, we need to provide epoch rewards and rebates as extra
+        // information provided to check_sui_conserved, because we mint rewards, and burn
+        // the rebates. We also need to pass in the unmetered_storage_rebate because storage
+        // rebate is not reflected in the storage_rebate of gas summary. This is a bit confusing.
+        // We could probably clean up the code a bit.
         // Put all the storage rebate accumulated in the system transaction
         // to the 0x5 object so that it's not lost.
         temporary_store.conserve_unmetered_storage_rebate(gas_status.unmetered_storage_rebate());
-        if !is_genesis_tx {
-        // TODO: use node_config for this instead?
-          let do_expensive_checks  = cfg!(debug_assertions);
-          if cfg!(debug_assertions) {
-              // in debug mode--run all the conservation checks even if expensive, and don't bother
-              // with avoiding panics if they fail
-              if !Mode::allow_arbitrary_values() {
-                  // ensure that this transaction did not create or destroy SUI
-                  temporary_store
-                      .check_sui_conserved(advance_epoch_gas_summary, do_expensive_checks)
-                      .unwrap();
-              } // else, we're in dev-inspect mode, which lets you turn bytes into arbitrary objects (including coins).
-              //  this can violate conservation, but it's ok/expected because this mode does no writes
-          } else {
-              // in release mode--do the cheaper checks and try to recover if they fail
-              let conservation_result = temporary_store.check_sui_conserved(advance_epoch_gas_summary, do_expensive_checks);
-              if let Err(conservation_err) = conservation_result {
-                  // conservation violated. try to avoid panic by dumping all writes, charging for gas, re-checking
-                  // conservation, and surfacing an aborted transaction with an invariant violation if all of that works
-                  result = Err(conservation_err);
-                  temporary_store.reset(gas, &mut gas_status);
-                  temporary_store.charge_gas(gas_object_id, &mut gas_status, &mut result, gas);
-                  // check conservation once more more. if we still fail, it's a problem with gas
-                  // charging that happens even in the "aborted" case--no other option but panic.
-                  // we will create or destroy SUI otherwise
-                  temporary_store.check_sui_conserved(advance_epoch_gas_summary, do_expensive_checks).unwrap();
+        if !is_genesis_tx && !Mode::allow_arbitrary_values() {
+            // ensure that this transaction did not create or destroy SUI, try to recover if the check fails
+            let conservation_result = temporary_store.check_sui_conserved(advance_epoch_gas_summary, enable_expensive_checks);
+            if let Err(conservation_err) = conservation_result {
+                // conservation violated. try to avoid panic by dumping all writes, charging for gas, re-checking
+                // conservation, and surfacing an aborted transaction with an invariant violation if all of that works
+                result = Err(conservation_err);
+                temporary_store.reset(gas, &mut gas_status);
+                temporary_store.charge_gas(gas_object_id, &mut gas_status, &mut result, gas);
+                // check conservation once more more
+                if let Err(recovery_err) = temporary_store.check_sui_conserved(advance_epoch_gas_summary, enable_expensive_checks) {
+                    // if we still fail, it's a problem with gas
+                    // charging that happens even in the "aborted" case--no other option but panic.
+                    // we will create or destroy SUI otherwise
+                    panic!("SUI conservation fail in tx block {}: {}\nGas status is {}\nTx was ", tx_ctx.digest(), recovery_err, gas_status.summary())
+                }
               }
-          }
-      } // else, genesis transactions mint the SUI supply, and hence does not satisfy SUI conservation.
-      // === end SUI conservation checks ===
+        } // else, we're in the genesis transaction which mints the SUI supply, and hence does not satisfy SUI conservation, or
+        // we're in the non-production dev inspect mode which allows us to violate conservation
+        // === end SUI conservation checks ===
         (cost_summary, result)
     } else {
         // legacy code before gas v2, leave it alone
@@ -502,7 +539,7 @@ pub fn construct_advance_epoch_pt(
     );
 
     let storage_rebates = builder.programmable_move_call(
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         SUI_SYSTEM_MODULE_NAME.to_owned(),
         ADVANCE_EPOCH_FUNCTION_NAME.to_owned(),
         vec![],
@@ -568,7 +605,7 @@ pub fn construct_advance_epoch_safe_mode_pt(
     );
 
     builder.programmable_move_call(
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         SUI_SYSTEM_MODULE_NAME.to_owned(),
         ADVANCE_EPOCH_SAFE_MODE_FUNCTION_NAME.to_owned(),
         vec![],
@@ -641,33 +678,53 @@ fn advance_epoch<S: ObjectStore + BackingPackageStore + ParentSync + ChildObject
     }
 
     for (version, modules, dependencies) in change_epoch.system_packages.into_iter() {
-        let modules: Vec<_> = modules
-            .into_iter()
-            .map(|m| {
-                CompiledModule::deserialize_with_max_version(
-                    &m,
-                    protocol_config.move_binary_format_version(),
-                )
-                .unwrap()
-            })
+        let max_format_version = protocol_config.move_binary_format_version();
+        let deserialized_modules: Vec<_> = modules
+            .iter()
+            .map(|m| CompiledModule::deserialize_with_max_version(m, max_format_version).unwrap())
             .collect();
 
-        let mut new_package =
-            Object::new_system_package(&modules, version, dependencies, tx_ctx.digest());
+        if version == OBJECT_START_VERSION {
+            let package_id = deserialized_modules.first().unwrap().address();
+            info!("adding new system package {package_id}");
 
-        info!(
-            "upgraded system package {:?}",
-            new_package.compute_object_reference()
-        );
+            let publish_pt = {
+                let mut b = ProgrammableTransactionBuilder::new();
+                b.command(Command::Publish(modules, dependencies));
+                b.finish()
+            };
 
-        // Decrement the version before writing the package so that the store can record the version
-        // growing by one in the effects.
-        new_package
-            .data
-            .try_as_package_mut()
-            .unwrap()
-            .decrement_version();
-        temporary_store.write_object(new_package, WriteKind::Mutate);
+            programmable_transactions::execution::execute::<_, execution_mode::System>(
+                protocol_config,
+                move_vm,
+                temporary_store,
+                tx_ctx,
+                gas_status,
+                None,
+                publish_pt,
+            )
+            .expect("System Package Publish must succeed");
+        } else {
+            let mut new_package = Object::new_system_package(
+                &deserialized_modules, version, dependencies, tx_ctx.digest(),
+            );
+
+            info!(
+                "upgraded system package {:?}",
+                new_package.compute_object_reference()
+            );
+
+            // Decrement the version before writing the package so that the store can record the
+            // version growing by one in the effects.
+            new_package
+                .data
+                .try_as_package_mut()
+                .unwrap()
+                .decrement_version();
+
+            // upgrade of a previously existing framework module
+            temporary_store.write_object(new_package, WriteKind::Mutate);
+        }
     }
 
     Ok(())

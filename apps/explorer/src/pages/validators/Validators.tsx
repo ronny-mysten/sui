@@ -7,6 +7,7 @@ import {
     type ApyByValidator,
     useGetValidatorsEvents,
     formatPercentageDisplay,
+    useGetSystemState,
 } from '@mysten/core';
 import { type SuiEvent, type SuiValidatorSummary } from '@mysten/sui.js';
 import { lazy, Suspense, useMemo } from 'react';
@@ -14,7 +15,6 @@ import { lazy, Suspense, useMemo } from 'react';
 import { ErrorBoundary } from '~/components/error-boundary/ErrorBoundary';
 import { StakeColumn } from '~/components/top-validators-card/StakeColumn';
 import { DelegationAmount } from '~/components/validator/DelegationAmount';
-import { useGetSystemObject } from '~/hooks/useGetObject';
 import { Banner } from '~/ui/Banner';
 import { Card } from '~/ui/Card';
 import { Heading } from '~/ui/Heading';
@@ -28,8 +28,6 @@ import { Text } from '~/ui/Text';
 import { Tooltip } from '~/ui/Tooltip';
 import { getValidatorMoveEvent } from '~/utils/getValidatorMoveEvent';
 import { VALIDATOR_LOW_STAKE_GRACE_PERIOD } from '~/utils/validatorConstants';
-
-const APY_DECIMALS = 3;
 
 const NodeMap = lazy(() => import('../../components/node-map'));
 
@@ -66,12 +64,13 @@ export function validatorsTableData(
                     // show the rolling average apy even if its zero, otherwise show -- for no data
                     apy: rollingAverageApys?.[validator.suiAddress] ?? null,
                     nextEpochGasPrice: validator.nextEpochGasPrice,
-                    commission: +validator.commissionRate / 100,
+                    commission: Number(validator.commissionRate) / 100,
                     img: img,
                     address: validator.suiAddress,
-                    lastReward: +event?.pool_staking_reward || 0,
+                    lastReward: Number(event?.pool_staking_reward) || 0,
                     atRisk: isAtRisk
-                        ? VALIDATOR_LOW_STAKE_GRACE_PERIOD - +atRiskValidator[1]
+                        ? VALIDATOR_LOW_STAKE_GRACE_PERIOD -
+                          Number(atRiskValidator[1])
                         : null,
                 };
             }),
@@ -135,7 +134,9 @@ export function validatorsTableData(
                 header: 'Proposed Next Epoch Gas Price',
                 accessorKey: 'nextEpochGasPrice',
                 enableSorting: true,
-                cell: (props: any) => <StakeColumn stake={props.getValue()} />,
+                cell: (props: any) => (
+                    <StakeColumn stake={props.getValue()} inMIST />
+                ),
             },
             {
                 header: 'APY',
@@ -210,7 +211,7 @@ export function validatorsTableData(
 }
 
 function ValidatorPageResult() {
-    const { data, isLoading, isSuccess, isError } = useGetSystemObject();
+    const { data, isLoading, isSuccess, isError } = useGetSystemState();
 
     const numberOfValidators = data?.activeValidators.length || 0;
 
@@ -231,7 +232,7 @@ function ValidatorPageResult() {
         const validators = data.activeValidators;
 
         return validators.reduce(
-            (acc, cur) => acc + +cur.stakingPoolSuiBalance,
+            (acc, cur) => acc + Number(cur.stakingPoolSuiBalance),
             0
         );
     }, [data]);
@@ -242,9 +243,12 @@ function ValidatorPageResult() {
             Object.keys(rollingAverageApys)?.length === 0
         )
             return null;
-        const apys = Object.values(rollingAverageApys);
+
+        // exclude validators with no apy
+        const apys = Object.values(rollingAverageApys)?.filter((a) => a > 0);
         const averageAPY = apys?.reduce((acc, cur) => acc + cur, 0);
-        return roundFloat(averageAPY / apys.length, APY_DECIMALS);
+        // in case of no apy, return 0
+        return apys.length > 0 ? roundFloat(averageAPY / apys.length) : 0;
     }, [rollingAverageApys]);
 
     const lastEpochRewardOnAllValidators = useMemo(() => {
@@ -252,7 +256,7 @@ function ValidatorPageResult() {
         let totalRewards = 0;
 
         validatorEvents.forEach(({ parsedJson }) => {
-            totalRewards += +parsedJson!.pool_staking_reward;
+            totalRewards += Number(parsedJson!.pool_staking_reward);
         });
 
         return totalRewards;
@@ -298,7 +302,7 @@ function ValidatorPageResult() {
                                 />
 
                                 <Stats
-                                    label="Last Epoch SUI Rewards"
+                                    label="Last Epoch Rewards"
                                     tooltip="The stake rewards collected during the last epoch."
                                     unavailable={
                                         lastEpochRewardOnAllValidators <= 0

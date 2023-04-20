@@ -54,6 +54,7 @@ validator_configs:
           report_batch_rate_limit: ~
           request_batch_rate_limit: ~
     enable-event-processing: false
+    enable-index-processing: true
     grpc-load-shed: ~
     grpc-concurrency-limit: 20000000000
     p2p-config:
@@ -70,12 +71,13 @@ validator_configs:
     end-of-epoch-broadcast-channel-capacity: 128
     checkpoint-executor-config:
       checkpoint-execution-max-concurrency: 200
-      local-execution-timeout-sec: 10
+      local-execution-timeout-sec: 30
     db-checkpoint-config:
       perform-db-checkpoints-at-epoch-end: false
     indirect-objects-threshold: 18446744073709551615
     expensive-safety-check-config:
       enable-epoch-sui-conservation-check: false
+      enable-deep-per-tx-sui-conservation-check: false
       force-disable-epoch-sui-conservation-check: false
       enable-state-consistency-check: false
       force-disable-state-consistency-check: false
@@ -131,6 +133,7 @@ validator_configs:
           report_batch_rate_limit: ~
           request_batch_rate_limit: ~
     enable-event-processing: false
+    enable-index-processing: true
     grpc-load-shed: ~
     grpc-concurrency-limit: 20000000000
     p2p-config:
@@ -147,12 +150,13 @@ validator_configs:
     end-of-epoch-broadcast-channel-capacity: 128
     checkpoint-executor-config:
       checkpoint-execution-max-concurrency: 200
-      local-execution-timeout-sec: 10
+      local-execution-timeout-sec: 30
     db-checkpoint-config:
       perform-db-checkpoints-at-epoch-end: false
     indirect-objects-threshold: 18446744073709551615
     expensive-safety-check-config:
       enable-epoch-sui-conservation-check: false
+      enable-deep-per-tx-sui-conservation-check: false
       force-disable-epoch-sui-conservation-check: false
       enable-state-consistency-check: false
       force-disable-state-consistency-check: false
@@ -208,6 +212,7 @@ validator_configs:
           report_batch_rate_limit: ~
           request_batch_rate_limit: ~
     enable-event-processing: false
+    enable-index-processing: true
     grpc-load-shed: ~
     grpc-concurrency-limit: 20000000000
     p2p-config:
@@ -224,12 +229,13 @@ validator_configs:
     end-of-epoch-broadcast-channel-capacity: 128
     checkpoint-executor-config:
       checkpoint-execution-max-concurrency: 200
-      local-execution-timeout-sec: 10
+      local-execution-timeout-sec: 30
     db-checkpoint-config:
       perform-db-checkpoints-at-epoch-end: false
     indirect-objects-threshold: 18446744073709551615
     expensive-safety-check-config:
       enable-epoch-sui-conservation-check: false
+      enable-deep-per-tx-sui-conservation-check: false
       force-disable-epoch-sui-conservation-check: false
       enable-state-consistency-check: false
       force-disable-state-consistency-check: false
@@ -285,6 +291,7 @@ validator_configs:
           report_batch_rate_limit: ~
           request_batch_rate_limit: ~
     enable-event-processing: false
+    enable-index-processing: true
     grpc-load-shed: ~
     grpc-concurrency-limit: 20000000000
     p2p-config:
@@ -301,12 +308,13 @@ validator_configs:
     end-of-epoch-broadcast-channel-capacity: 128
     checkpoint-executor-config:
       checkpoint-execution-max-concurrency: 200
-      local-execution-timeout-sec: 10
+      local-execution-timeout-sec: 30
     db-checkpoint-config:
       perform-db-checkpoints-at-epoch-end: false
     indirect-objects-threshold: 18446744073709551615
     expensive-safety-check-config:
       enable-epoch-sui-conservation-check: false
+      enable-deep-per-tx-sui-conservation-check: false
       force-disable-epoch-sui-conservation-check: false
       enable-state-consistency-check: false
       force-disable-state-consistency-check: false
@@ -362,6 +370,7 @@ validator_configs:
           report_batch_rate_limit: ~
           request_batch_rate_limit: ~
     enable-event-processing: false
+    enable-index-processing: true
     grpc-load-shed: ~
     grpc-concurrency-limit: 20000000000
     p2p-config:
@@ -378,12 +387,13 @@ validator_configs:
     end-of-epoch-broadcast-channel-capacity: 128
     checkpoint-executor-config:
       checkpoint-execution-max-concurrency: 200
-      local-execution-timeout-sec: 10
+      local-execution-timeout-sec: 30
     db-checkpoint-config:
       perform-db-checkpoints-at-epoch-end: false
     indirect-objects-threshold: 18446744073709551615
     expensive-safety-check-config:
       enable-epoch-sui-conservation-check: false
+      enable-deep-per-tx-sui-conservation-check: false
       force-disable-epoch-sui-conservation-check: false
       enable-state-consistency-check: false
       force-disable-state-consistency-check: false
@@ -439,6 +449,7 @@ validator_configs:
           report_batch_rate_limit: ~
           request_batch_rate_limit: ~
     enable-event-processing: false
+    enable-index-processing: true
     grpc-load-shed: ~
     grpc-concurrency-limit: 20000000000
     p2p-config:
@@ -455,12 +466,13 @@ validator_configs:
     end-of-epoch-broadcast-channel-capacity: 128
     checkpoint-executor-config:
       checkpoint-execution-max-concurrency: 200
-      local-execution-timeout-sec: 10
+      local-execution-timeout-sec: 30
     db-checkpoint-config:
       perform-db-checkpoints-at-epoch-end: false
     indirect-objects-threshold: 18446744073709551615
     expensive-safety-check-config:
       enable-epoch-sui-conservation-check: false
+      enable-deep-per-tx-sui-conservation-check: false
       force-disable-epoch-sui-conservation-check: false
       enable-state-consistency-check: false
       force-disable-state-consistency-check: false
@@ -516,6 +528,7 @@ validator_configs:
           report_batch_rate_limit: ~
           request_batch_rate_limit: ~
     enable-event-processing: false
+    enable-index-processing: true
     grpc-load-shed: ~
     grpc-concurrency-limit: 20000000000
     p2p-config:
@@ -532,12 +545,13 @@ validator_configs:
     end-of-epoch-broadcast-channel-capacity: 128
     checkpoint-executor-config:
       checkpoint-execution-max-concurrency: 200
-      local-execution-timeout-sec: 10
+      local-execution-timeout-sec: 30
     db-checkpoint-config:
       perform-db-checkpoints-at-epoch-end: false
     indirect-objects-threshold: 18446744073709551615
     expensive-safety-check-config:
       enable-epoch-sui-conservation-check: false
+      enable-deep-per-tx-sui-conservation-check: false
       force-disable-epoch-sui-conservation-check: false
       enable-state-consistency-check: false
       force-disable-state-consistency-check: false

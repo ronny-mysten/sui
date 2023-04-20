@@ -29,11 +29,11 @@ use sui_types::messages::{
 use sui_types::signature::GenericSignature;
 use tracing::{debug, error, info, trace, warn};
 use typed_store::rocks::{
-    point_lookup_db_options, DBBatch, DBMap, DBOptions, MetricConf, TypedStoreError,
+    default_db_options, DBBatch, DBMap, DBOptions, MetricConf, TypedStoreError,
 };
 use typed_store::traits::{TableSummary, TypedStoreDebug};
 
-use crate::authority::epoch_start_configuration::EpochStartConfiguration;
+use crate::authority::epoch_start_configuration::{EpochFlag, EpochStartConfiguration};
 use crate::authority::{AuthorityStore, ResolverWrapper};
 use crate::checkpoints::{
     BuilderCheckpointSummary, CheckpointCommitHeight, CheckpointServiceNotify, EpochStats,
@@ -165,13 +165,15 @@ pub struct AuthorityPerEpochStore {
 
     /// Execution state that has to restart at each epoch change
     execution_component: ExecutionComponents,
+    /// Fast cache for EpochFlag::InMemoryCheckpointRoots
+    pub(crate) in_memory_checkpoint_roots: bool,
 }
 
 /// AuthorityEpochTables contains tables that contain data that is only valid within an epoch.
 #[derive(DBMapUtils)]
 pub struct AuthorityEpochTables {
     /// This is map between the transaction digest and transactions found in the `transaction_lock`.
-    #[default_options_override_fn = "transactions_table_default_config"]
+    #[default_options_override_fn = "signed_transactions_table_default_config"]
     signed_transactions:
         DBMap<TransactionDigest, TrustedEnvelope<SenderSignedData, AuthoritySignInfo>>,
 
@@ -204,6 +206,7 @@ pub struct AuthorityEpochTables {
     /// progress. But it is more complex, because it would be necessary to track inflight
     /// executions not ordered by indices. For now, tracking inflight certificates as a map
     /// seems easier.
+    #[default_options_override_fn = "pending_execution_table_default_config"]
     pending_execution: DBMap<TransactionDigest, TrustedExecutableTransaction>,
 
     /// Track which transactions have been processed in handle_consensus_transaction. We must be
@@ -217,8 +220,10 @@ pub struct AuthorityEpochTables {
     consensus_message_processed: DBMap<SequencedConsensusTransactionKey, bool>,
 
     /// Map stores pending transactions that this authority submitted to consensus
+    #[default_options_override_fn = "pending_consensus_transactions_table_default_config"]
     pending_consensus_transactions: DBMap<ConsensusTransactionKey, ConsensusTransaction>,
 
+    // todo - this table will be deleted after switch to EpochFlag::InMemoryCheckpointRoots
     /// This is an inverse index for consensus_message_processed - it allows to select
     /// all transactions at the specific consensus range
     ///
@@ -232,6 +237,7 @@ pub struct AuthorityEpochTables {
     /// every message output by consensus (and in the right order).
     last_consensus_index: DBMap<u64, ExecutionIndicesWithHash>,
 
+    // todo - this table will be deleted after switch to EpochFlag::InMemoryCheckpointRoots
     /// This table lists all checkpoint boundaries in the consensus sequence
     ///
     /// The key in this table is incremental index and value is corresponding narwhal
@@ -260,6 +266,7 @@ pub struct AuthorityEpochTables {
     /// the sequence number of checkpoint does not match height here.
     ///
     /// The boolean value indicates whether this is the last checkpoint of the epoch.
+    #[default_options_override_fn = "pending_checkpoints_table_default_config"]
     pending_checkpoints: DBMap<CheckpointCommitHeight, PendingCheckpoint>,
 
     /// Checkpoint builder maintains internal list of transactions it included in checkpoints here
@@ -274,6 +281,9 @@ pub struct AuthorityEpochTables {
     /// user signature for this transaction here. This will be included in the checkpoint later.
     user_signatures_for_checkpoints: DBMap<TransactionDigest, Vec<GenericSignature>>,
 
+    /// This table is not used
+    #[allow(dead_code)]
+    builder_checkpoint_summary: DBMap<CheckpointSequenceNumber, CheckpointSummary>,
     /// Maps sequence number to checkpoint summary, used by CheckpointBuilder to build checkpoint within epoch
     builder_checkpoint_summary_v2: DBMap<CheckpointSequenceNumber, BuilderCheckpointSummary>,
 
@@ -288,6 +298,30 @@ pub struct AuthorityEpochTables {
     /// Contains a single key, which overrides the value of
     /// ProtocolConfig::buffer_stake_for_protocol_upgrade_bps
     override_protocol_upgrade_buffer_stake: DBMap<u64, u64>,
+}
+
+fn signed_transactions_table_default_config() -> DBOptions {
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan()
+}
+
+fn pending_execution_table_default_config() -> DBOptions {
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan()
+}
+
+fn pending_consensus_transactions_table_default_config() -> DBOptions {
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan()
+}
+
+fn pending_checkpoints_table_default_config() -> DBOptions {
+    default_db_options()
+        .optimize_for_write_throughput()
+        .optimize_for_large_values_no_scan()
 }
 
 impl AuthorityEpochTables {
@@ -386,6 +420,13 @@ impl AuthorityPerEpochStore {
         );
         let signature_verifier =
             SignatureVerifier::new(committee.clone(), signature_verifier_metrics);
+        let in_memory_checkpoint_roots = epoch_start_configuration
+            .flags()
+            .contains(&EpochFlag::InMemoryCheckpointRoots);
+        info!(
+            "in_memory_checkpoint_roots = {}",
+            in_memory_checkpoint_roots
+        );
         let s = Arc::new(Self {
             committee,
             protocol_config,
@@ -406,6 +447,7 @@ impl AuthorityPerEpochStore {
             metrics,
             epoch_start_configuration,
             execution_component,
+            in_memory_checkpoint_roots,
         });
         s.update_buffer_stake_metric();
         s
@@ -450,7 +492,7 @@ impl AuthorityPerEpochStore {
         )
     }
 
-    pub fn committee(&self) -> &Committee {
+    pub fn committee(&self) -> &Arc<Committee> {
         &self.committee
     }
 
@@ -717,6 +759,17 @@ impl AuthorityPerEpochStore {
     #[cfg(test)]
     pub fn get_next_object_version(&self, obj: &ObjectID) -> Option<SequenceNumber> {
         self.tables.next_shared_object_versions.get(obj).unwrap()
+    }
+
+    pub fn set_shared_object_versions_for_testing(
+        &self,
+        tx_digest: &TransactionDigest,
+        assigned_versions: &Vec<(ObjectID, SequenceNumber)>,
+    ) -> SuiResult {
+        self.tables
+            .assigned_shared_object_versions
+            .insert(tx_digest, assigned_versions)?;
+        Ok(())
     }
 
     // For each id in objects_to_init, return the next version for that id as recorded in the
@@ -1022,7 +1075,7 @@ impl AuthorityPerEpochStore {
             .override_protocol_upgrade_buffer_stake
             .get(&OVERRIDE_PROTOCOL_UPGRADE_BUFFER_STAKE_INDEX)
             .expect("force_protocol_upgrade read cannot fail")
-            .tap_some(|b| warn!("using overrided buffer stake value of {}", b))
+            .tap_some(|b| warn!("using overridden buffer stake value of {}", b))
             .unwrap_or_else(|| {
                 self.protocol_config()
                     .buffer_stake_for_protocol_upgrade_bps()
@@ -1290,11 +1343,13 @@ impl AuthorityPerEpochStore {
         certificate: &VerifiedExecutableTransaction,
         consensus_index: ExecutionIndicesWithHash,
     ) -> SuiResult {
-        let transaction_digest = *certificate.digest();
-        batch.insert_batch(
-            &self.tables.consensus_message_order,
-            [(consensus_index.index, transaction_digest)],
-        )?;
+        if !self.in_memory_checkpoint_roots {
+            let transaction_digest = *certificate.digest();
+            batch.insert_batch(
+                &self.tables.consensus_message_order,
+                [(consensus_index.index, transaction_digest)],
+            )?;
+        }
         batch.insert_batch(
             &self.tables.pending_execution,
             [(*certificate.digest(), certificate.clone().serializable())],
@@ -1885,7 +1940,7 @@ impl AuthorityPerEpochStore {
         }
     }
 
-    fn record_end_of_message_quorum_time_metric(&self) {
+    pub fn record_end_of_message_quorum_time_metric(&self) {
         if let Some(epoch_close_time) = *self.epoch_close_time.read() {
             self.metrics
                 .epoch_end_of_publish_quorum_time_since_epoch_close_ms
@@ -1955,10 +2010,6 @@ impl AuthorityPerEpochStore {
     }
 }
 
-fn transactions_table_default_config() -> DBOptions {
-    point_lookup_db_options()
-}
-
 impl ExecutionComponents {
     fn new(
         protocol_config: &ProtocolConfig,
@@ -1966,7 +2017,7 @@ impl ExecutionComponents {
         metrics: Arc<ResolverMetrics>,
         expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
     ) -> Self {
-        let native_functions = sui_framework::natives::all_natives(/* silent */ true);
+        let native_functions = sui_move_natives::all_natives(/* silent */ true);
         let move_vm = Arc::new(
             adapter::new_move_vm(
                 native_functions.clone(),

@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use sui::client_commands::WalletContext;
 use sui::client_commands::{SuiClientCommandResult, SuiClientCommands};
 use sui_core::test_utils::dummy_transaction_effects;
-use sui_framework_build::compiled_package::BuildConfig;
 use sui_json_rpc_types::SuiObjectResponse;
 use sui_keys::keystore::AccountKeystore;
+use sui_move_build::BuildConfig;
 use sui_types::base_types::ObjectRef;
 use sui_types::base_types::SuiAddress;
 use sui_types::base_types::{ObjectID, SequenceNumber};
@@ -33,7 +33,7 @@ use sui_types::parse_sui_struct_tag;
 use sui_types::sui_system_state::SUI_SYSTEM_MODULE_NAME;
 use sui_types::utils::to_sender_signed_transaction;
 use sui_types::{
-    SUI_FRAMEWORK_OBJECT_ID, SUI_SYSTEM_PACKAGE_ID, SUI_SYSTEM_STATE_OBJECT_ID,
+    SUI_FRAMEWORK_OBJECT_ID, SUI_SYSTEM_OBJECT_ID, SUI_SYSTEM_STATE_OBJECT_ID,
     SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
 
@@ -292,8 +292,7 @@ pub fn create_publish_move_package_transaction(
     gas_budget: u64,
     gas_price: u64,
 ) -> VerifiedTransaction {
-    let build_config = BuildConfig::new_for_testing();
-    let compiled_package = sui_framework::build_move_package(&path, build_config).unwrap();
+    let compiled_package = BuildConfig::new_for_testing().build(path).unwrap();
     let all_module_bytes =
         compiled_package.get_package_bytes(/* with_unpublished_deps */ false);
     let dependencies = compiled_package.get_dependency_original_package_ids();
@@ -388,7 +387,7 @@ pub fn make_staking_transaction(
 ) -> VerifiedTransaction {
     let data = TransactionData::new_move_call(
         sender,
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         SUI_SYSTEM_MODULE_NAME.to_owned(),
         "request_add_stake".parse().unwrap(),
         vec![],

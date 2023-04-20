@@ -138,7 +138,7 @@ export function TransactionCard({
 
                                 <div className="flex break-all">
                                     <Text
-                                        variant="p3"
+                                        variant="pSubtitle"
                                         weight="normal"
                                         color="issue-dark"
                                     >
@@ -178,7 +178,9 @@ export function TransactionCard({
                         </>
                     )}
 
-                    {timestamp && <DateCard timestamp={+timestamp} size="sm" />}
+                    {timestamp && (
+                        <DateCard timestamp={Number(timestamp)} size="sm" />
+                    )}
                 </div>
             </div>
         </Link>

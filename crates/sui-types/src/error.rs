@@ -146,6 +146,8 @@ pub enum UserInputError {
         gas_price: u64,
         reference_gas_price: u64,
     },
+    #[error("Gas price cannot exceed {:?} mist", max_gas_price)]
+    GasPriceTooHigh { max_gas_price: u64 },
     #[error("Object {object_id} is not a gas object")]
     InvalidGasObject { object_id: ObjectID },
     #[error("Gas object does not have enough balance to cover minimal gas spend")]
@@ -273,6 +275,12 @@ pub enum SuiError {
         signer: AuthorityName,
         conflicting_sig: bool,
     },
+    // TODO: Used for distinguishing between different occurrences of invalid signatures, to allow retries in some cases.
+    #[error(
+        "Signature is not valid, but a retry may result in a valid one: {}",
+        error
+    )]
+    PotentiallyTemporarilyInvalidSignature { error: String },
 
     // Certificate verification and execution
     #[error(
@@ -635,6 +643,8 @@ impl SuiError {
                     _ => (false, true),
                 }
             }
+
+            SuiError::PotentiallyTemporarilyInvalidSignature { .. } => (true, true),
 
             // Overload errors
             SuiError::TooManyTransactionsPendingExecution { .. } => (true, true),

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::{fs, io, path::Path};
 use std::{path::PathBuf, str};
 use sui::client_commands::WalletContext;
-use sui_framework_build::compiled_package::{BuildConfig, CompiledPackage, SuiPackageHooks};
+use sui_move_build::{BuildConfig, CompiledPackage, SuiPackageHooks};
 use sui_types::base_types::ObjectID;
 use sui_types::{
     base_types::{ObjectRef, SuiAddress},
@@ -572,7 +572,9 @@ async fn multiple_failures() -> anyhow::Result<()> {
 /// Compile the package at absolute path `package`.
 fn compile_package(package: impl AsRef<Path>) -> CompiledPackage {
     move_package::package_hooks::register_package_hooks(Box::new(SuiPackageHooks));
-    sui_framework::build_move_package(package.as_ref(), BuildConfig::new_for_testing()).unwrap()
+    BuildConfig::new_for_testing()
+        .build(package.as_ref().to_path_buf())
+        .unwrap()
 }
 
 fn sanitize_id(mut message: String, m: &HashMap<SuiAddress, &str>) -> String {

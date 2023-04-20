@@ -1,10 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useGetObject } from '@mysten/core';
 import { useParams } from 'react-router-dom';
 
 import { ErrorBoundary } from '../../components/error-boundary/ErrorBoundary';
-import { useGetObject } from '../../hooks/useGetObject';
 import { translate, type DataType } from './ObjectResultType';
 import PkgView from './views/PkgView';
 import { TokenView } from './views/TokenView';
@@ -26,10 +26,14 @@ function Fail({ objID }: { objID: string | undefined }) {
 
 export function ObjectResult() {
     const { id: objID } = useParams();
-    const { data, isLoading, isError } = useGetObject(objID!);
+    const { data, isLoading, isError, isFetched } = useGetObject(objID!);
 
     if (isLoading) {
-        return <LoadingSpinner text="Loading data" />;
+        return (
+            <div className="flex w-full items-center justify-center">
+                <LoadingSpinner text="Loading data" />
+            </div>
+        );
     }
 
     if (isError) {
@@ -37,7 +41,7 @@ export function ObjectResult() {
     }
 
     // TODO: Handle status better NotExists, Deleted, Other
-    if (data.error) {
+    if (data.error || (isFetched && !data)) {
         return <Fail objID={objID} />;
     }
 
@@ -56,7 +60,7 @@ export function ObjectResult() {
                     {isPackage ? (
                         <PkgView data={resp} />
                     ) : (
-                        <TokenView data={resp} />
+                        <TokenView data={data} />
                     )}
                 </div>
             </ErrorBoundary>

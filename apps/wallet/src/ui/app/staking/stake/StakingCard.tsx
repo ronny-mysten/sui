@@ -84,7 +84,7 @@ function StakingCard() {
         [coinType]
     );
 
-    const suiEarned = stakeData?.estimatedReward || 0;
+    const suiEarned = stakeData?.estimatedReward || '0';
 
     const [coinDecimals] = useCoinDecimals(coinType);
     // set minimum stake amount to 1 SUI
@@ -289,7 +289,7 @@ function StakingCard() {
                                         coinBalance={totalTokenBalance}
                                         coinType={coinType}
                                         stakingReward={suiEarned}
-                                        epoch={+(system?.epoch || 0)}
+                                        epoch={Number(system?.epoch || 0)}
                                     />
                                 ) : (
                                     <StakeForm
@@ -319,7 +319,7 @@ function StakingCard() {
                                             initialIsOpen
                                         >
                                             <Text
-                                                variant="p3"
+                                                variant="pSubtitle"
                                                 color="steel-dark"
                                                 weight="normal"
                                             >

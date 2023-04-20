@@ -57,6 +57,10 @@ where
     /// Returns an iterator visiting each key-value pair in the map.
     fn iter(&'a self) -> Self::Iterator;
 
+    /// Returns an iterator visiting each key-value pair in the map.
+    fn iter_with_bounds(&'a self, lower_bound: Option<K>, upper_bound: Option<K>)
+        -> Self::Iterator;
+
     /// Same as `iter` but performs status check
     fn safe_iter(&'a self) -> Self::SafeIterator;
 
@@ -85,6 +89,18 @@ where
         keys.into_iter()
             .map(|key| self.get_raw_bytes(key.borrow()))
             .collect()
+    }
+
+    /// Returns a vector of values corresponding to the keys provided, non-atomically.
+    fn chunked_multi_get<J>(
+        &self,
+        keys: impl IntoIterator<Item = J>,
+        _chunk_size: usize,
+    ) -> Result<Vec<Option<V>>, Self::Error>
+    where
+        J: Borrow<K>,
+    {
+        keys.into_iter().map(|key| self.get(key.borrow())).collect()
     }
 
     /// Inserts key-value pairs, non-atomically.

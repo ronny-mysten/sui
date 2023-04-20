@@ -42,7 +42,7 @@ use sui_types::sui_system_state::{
 };
 use sui_types::utils::to_sender_signed_transaction;
 use sui_types::{
-    SUI_SYSTEM_PACKAGE_ID, SUI_SYSTEM_STATE_OBJECT_ID, SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
+    SUI_SYSTEM_OBJECT_ID, SUI_SYSTEM_STATE_OBJECT_ID, SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
 use test_utils::authority::start_node;
 use test_utils::{
@@ -414,9 +414,7 @@ async fn test_create_advance_epoch_tx_race() {
 }
 
 #[sim_test]
-#[ignore]
 async fn test_reconfig_with_failing_validator() {
-    telemetry_subscribers::init_for_testing();
     sui_protocol_config::ProtocolConfig::poison_get_for_min_version();
 
     let test_cluster = Arc::new(
@@ -438,7 +436,10 @@ async fn test_reconfig_with_failing_validator() {
         .map(|v| v.parse().unwrap())
         .unwrap_or(4);
 
-    test_cluster.wait_for_epoch(Some(target_epoch)).await;
+    // A longer timeout is required, as restarts can cause reconfiguration to take longer.
+    test_cluster
+        .wait_for_epoch_with_timeout(Some(target_epoch), Duration::from_secs(90))
+        .await;
 }
 
 #[sim_test]
@@ -490,7 +491,6 @@ async fn test_validator_resign_effects() {
 }
 
 #[sim_test]
-#[ignore]
 async fn test_validator_candidate_pool_read() {
     let new_validator_key = gen_keys(5).pop().unwrap();
     let new_validator_address: SuiAddress = new_validator_key.public().into();
@@ -547,6 +547,10 @@ async fn test_validator_candidate_pool_read() {
         &new_validator_key,
     )
     .await;
+
+    // Trigger reconfiguration so that the candidate adding txn is executed on all authorities.
+    trigger_reconfiguration(&authorities).await;
+
     // Check that the candidate can be found in the candidate table now.
     authorities[0].with(|node| {
         let system_state = node
@@ -619,7 +623,7 @@ async fn test_inactive_validator_pool_read() {
 
     let tx_data = TransactionData::new_move_call(
         address,
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         ident_str!("sui_system").to_owned(),
         ident_str!("request_remove_validator").to_owned(),
         vec![],
@@ -662,7 +666,6 @@ async fn test_inactive_validator_pool_read() {
 fn gen_keys(count: usize) -> Vec<AccountKeyPair> {
     let mut rng = StdRng::from_seed([0; 32]);
     (0..count)
-        .into_iter()
         .map(|_| get_key_pair_from_rng::<AccountKeyPair, _>(&mut rng).1)
         .collect()
 }
@@ -1169,7 +1172,7 @@ async fn execute_add_validator_candidate_tx(
         .unwrap();
     let candidate_tx_data = TransactionData::new_move_call(
         sender,
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         ident_str!("sui_system").to_owned(),
         ident_str!("request_add_validator_candidate").to_owned(),
         vec![],
@@ -1236,7 +1239,7 @@ async fn execute_join_committee_txes(
     // Step 2: Give the candidate enough stake.
     let stake_tx_data = TransactionData::new_move_call(
         sender,
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         ident_str!("sui_system").to_owned(),
         ident_str!("request_add_stake").to_owned(),
         vec![],
@@ -1265,7 +1268,7 @@ async fn execute_join_committee_txes(
     // Step 3: Convert the candidate to an active valdiator.
     let activation_tx_data = TransactionData::new_move_call(
         sender,
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         ident_str!("sui_system").to_owned(),
         ident_str!("request_add_validator").to_owned(),
         vec![],
@@ -1300,7 +1303,7 @@ async fn execute_leave_committee_tx(
         .unwrap();
     let tx_data = TransactionData::new_move_call(
         sui_address,
-        SUI_SYSTEM_PACKAGE_ID,
+        SUI_SYSTEM_OBJECT_ID,
         ident_str!("sui_system").to_owned(),
         ident_str!("request_remove_validator").to_owned(),
         vec![],

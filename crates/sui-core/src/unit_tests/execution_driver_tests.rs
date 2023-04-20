@@ -6,7 +6,7 @@ use crate::authority::{AuthorityState, EffectsNotifyRead};
 use crate::authority_aggregator::authority_aggregator_tests::{
     create_object_move_transaction, do_cert, do_transaction, extract_cert, get_latest_ref,
 };
-use crate::authority_server::{ValidatorService, MAX_PER_OBJECT_EXECUTION_QUEUE_LENGTH};
+use crate::authority_server::{ValidatorService, MAX_PER_OBJECT_QUEUE_LENGTH};
 use crate::safe_client::SafeClient;
 use crate::test_authority_clients::LocalAuthorityClient;
 use crate::test_utils::{init_local_authorities, make_transfer_object_move_transaction};
@@ -274,23 +274,19 @@ async fn execute_shared_on_first_three_authorities(
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn test_transaction_manager() {
+async fn test_execution_with_dependencies() {
     telemetry_subscribers::init_for_testing();
 
     // ---- Initialize a network with three accounts, each with 10 gas objects.
 
     const NUM_ACCOUNTS: usize = 3;
-    let accounts: Vec<(_, AccountKeyPair)> = (0..NUM_ACCOUNTS)
-        .into_iter()
-        .map(|_| get_key_pair())
-        .collect_vec();
+    let accounts: Vec<(_, AccountKeyPair)> =
+        (0..NUM_ACCOUNTS).map(|_| get_key_pair()).collect_vec();
 
     const NUM_GAS_OBJECTS_PER_ACCOUNT: usize = 10;
     let gas_objects = (0..NUM_ACCOUNTS)
-        .into_iter()
         .map(|i| {
             (0..NUM_GAS_OBJECTS_PER_ACCOUNT)
-                .into_iter()
                 .map(|_| Object::with_owner_for_testing(accounts[i].0))
                 .collect_vec()
         })
@@ -459,7 +455,6 @@ async fn test_per_object_overload() {
     let (addr, key) = get_key_pair();
     const NUM_GAS_OBJECTS_PER_ACCOUNT: usize = 2000;
     let gas_objects = (0..NUM_GAS_OBJECTS_PER_ACCOUNT)
-        .into_iter()
         .map(|_| Object::with_owner_for_testing(addr))
         .collect_vec();
     let (aggregator, authorities, _genesis, package) =
@@ -525,7 +520,7 @@ async fn test_per_object_overload() {
     // Sign and try execute 1000 txns on the first three authorities. And enqueue them on the last authority.
     // First shared counter txn has input object available on authority 3. So to overload authority 3, 1 more
     // txn is needed.
-    let num_txns = MAX_PER_OBJECT_EXECUTION_QUEUE_LENGTH + 1;
+    let num_txns = MAX_PER_OBJECT_QUEUE_LENGTH + 1;
     for gas_object in gas_objects.iter().take(num_txns) {
         let gas_ref = get_latest_ref(authority_clients[0], gas_object.id()).await;
         let shared_txn = make_counter_increment_transaction(

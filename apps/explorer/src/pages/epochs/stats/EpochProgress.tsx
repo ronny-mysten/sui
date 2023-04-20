@@ -27,7 +27,7 @@ export function EpochProgress({
 
     return (
         <Card bg={inProgress ? 'highlight' : 'default'} spacing="lg">
-            <div className="flex flex-col space-y-16">
+            <div className="flex min-w-[136px] flex-col space-y-16">
                 <div className="space-y-4">
                     <Heading color="steel-darker" variant="heading3/semibold">
                         {inProgress
@@ -36,30 +36,33 @@ export function EpochProgress({
                     </Heading>
                     <div>
                         <Text
-                            variant="p4/normal"
+                            variant="pSubtitleSmall/normal"
                             uppercase
                             color="steel-darker"
                         >
                             Start
                         </Text>
-                        <Text variant="p3/semibold" color="steel-darker">
+                        <Text variant="pSubtitle/semibold" color="steel-darker">
                             {formatDate(start)}
                         </Text>
                     </div>
-                    {!inProgress && end && (
-                        <div className="space-y-1.5">
+                    {!inProgress && end ? (
+                        <div>
                             <Text
-                                variant="p4/normal"
+                                variant="pSubtitleSmall/normal"
                                 uppercase
                                 color="steel-darker"
                             >
                                 End
                             </Text>
-                            <Text variant="p3/semibold" color="steel-darker">
+                            <Text
+                                variant="pSubtitle/semibold"
+                                color="steel-darker"
+                            >
                                 {formatDate(end)}
                             </Text>
                         </div>
-                    )}
+                    ) : null}
                 </div>
                 {inProgress ? (
                     <div className="space-y-1.5">

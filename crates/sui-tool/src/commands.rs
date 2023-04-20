@@ -10,6 +10,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 use sui_config::genesis::Genesis;
 use sui_core::authority_client::AuthorityAPI;
+use sui_replay::{execute_replay_command, ReplayToolCommand};
 
 use sui_types::{base_types::*, object::Owner};
 
@@ -79,6 +80,7 @@ pub enum ToolCommand {
         concise_no_header: bool,
     },
 
+    /// Fetch the effects association with transaction `digest`
     #[clap(name = "fetch-transaction")]
     FetchTransaction {
         #[clap(long = "genesis")]
@@ -86,6 +88,10 @@ pub enum ToolCommand {
 
         #[clap(long, help = "The transaction ID to fetch")]
         digest: TransactionDigest,
+
+        /// If true, show the input transaction as well as the effects
+        #[clap(long = "show-tx")]
+        show_input_tx: bool,
     },
 
     /// Tool to read validator & node db.
@@ -138,6 +144,16 @@ pub enum ToolCommand {
         config_path: PathBuf,
         #[clap(long = "db-checkpoint-path")]
         db_checkpoint_path: PathBuf,
+    },
+
+    #[clap(name = "replay")]
+    Replay {
+        #[clap(long = "rpc")]
+        rpc_url: String,
+        #[clap(long = "safety-checks")]
+        safety_checks: bool,
+        #[clap(subcommand)]
+        cmd: ReplayToolCommand,
     },
 }
 
@@ -224,8 +240,15 @@ impl ToolCommand {
                     }
                 }
             }
-            ToolCommand::FetchTransaction { genesis, digest } => {
-                print!("{}", get_transaction_block(digest, genesis).await?);
+            ToolCommand::FetchTransaction {
+                genesis,
+                digest,
+                show_input_tx,
+            } => {
+                print!(
+                    "{}",
+                    get_transaction_block(digest, genesis, show_input_tx).await?
+                );
             }
             ToolCommand::DbTool { db_path, cmd } => {
                 let path = PathBuf::from(db_path);
@@ -290,6 +313,11 @@ impl ToolCommand {
                 let config = sui_config::NodeConfig::load(config_path)?;
                 restore_from_db_checkpoint(&config, &db_checkpoint_path).await?;
             }
+            ToolCommand::Replay {
+                rpc_url,
+                safety_checks,
+                cmd,
+            } => execute_replay_command(rpc_url, safety_checks, cmd).await?,
         };
         Ok(())
     }

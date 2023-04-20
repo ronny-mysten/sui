@@ -142,10 +142,11 @@ export function StakeCard({
         ? StakeState.EARNING
         : StakeState.WARM_UP;
 
-    const rewards = isEarnedRewards && estimatedReward ? estimatedReward : 0;
+    const rewards =
+        isEarnedRewards && estimatedReward ? BigInt(estimatedReward) : 0n;
     const [principalStaked, symbol] = useFormatCoin(principal, SUI_TYPE_ARG);
     const [rewardsStaked] = useFormatCoin(rewards, SUI_TYPE_ARG);
-    const isEarning = delegationState === StakeState.EARNING && rewards > 0;
+    const isEarning = delegationState === StakeState.EARNING && rewards > 0n;
 
     // Applicable only for warm up
     const epochBeforeRewards =
@@ -184,7 +185,7 @@ export function StakeCard({
                         stacked
                     />
 
-                    <div className="text-steel text-p1 opacity-0 group-hover:opacity-100">
+                    <div className="text-steel text-pBody opacity-0 group-hover:opacity-100">
                         <IconTooltip
                             tip="Object containing the delegated staked SUI tokens, owned by each delegator"
                             placement="top"

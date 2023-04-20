@@ -7,8 +7,6 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fastcrypto::encoding::Base64;
-use futures::executor::block_on;
-use futures::future::join_all;
 use itertools::Itertools;
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::RpcModule;
@@ -28,6 +26,7 @@ use sui_json_rpc_types::{
     SuiObjectDataOptions, SuiObjectResponse, SuiPastObjectResponse, SuiTransactionBlock,
     SuiTransactionBlockEvents, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
 };
+use sui_json_rpc_types::{SuiLoadedChildObject, SuiLoadedChildObjectsResponse};
 use sui_open_rpc::Module;
 use sui_types::base_types::{ObjectID, SequenceNumber, TransactionDigest};
 use sui_types::collection_types::VecMap;
@@ -45,6 +44,7 @@ use sui_types::move_package::normalize_modules;
 use sui_types::object::{Data, Object, ObjectRead, PastObjectRead};
 use sui_types::sui_serde::BigInt;
 
+use crate::api::JsonRpcMetrics;
 use crate::api::{validate_limit, ReadApiServer};
 use crate::api::{QUERY_MAX_RESULT_LIMIT, QUERY_MAX_RESULT_LIMIT_CHECKPOINTS};
 use crate::error::Error;
@@ -59,6 +59,7 @@ const MAX_DISPLAY_NESTED_LEVEL: usize = 10;
 #[derive(Clone)]
 pub struct ReadApi {
     pub state: Arc<AuthorityState>,
+    pub metrics: Arc<JsonRpcMetrics>,
 }
 
 // Internal data structure to make it easy to work with data returned from
@@ -91,8 +92,8 @@ impl IntermediateTransactionResponse {
 }
 
 impl ReadApi {
-    pub fn new(state: Arc<AuthorityState>) -> Self {
-        Self { state }
+    pub fn new(state: Arc<AuthorityState>, metrics: Arc<JsonRpcMetrics>) -> Self {
+        Self { state, metrics }
     }
 
     fn get_checkpoint_internal(&self, id: CheckpointId) -> Result<Checkpoint, Error> {
@@ -129,7 +130,7 @@ impl ReadApi {
         })
     }
 
-    async fn multi_get_transaction_blocks_internal(
+    fn multi_get_transaction_blocks_internal(
         &self,
         digests: Vec<TransactionDigest>,
         opts: Option<SuiTransactionBlockResponseOptions>,
@@ -142,6 +143,9 @@ impl ReadApi {
             })
             .into());
         }
+        self.metrics
+            .get_tx_blocks_limit
+            .report(digests.len() as u64);
 
         let opts = opts.unwrap_or_default();
 
@@ -297,7 +301,7 @@ impl ReadApi {
 
         let object_cache = ObjectProviderCache::new(self.state.clone());
         if opts.show_balance_changes {
-            let mut futures = vec![];
+            let mut results = vec![];
             for resp in temp_response.values() {
                 let input_objects = if let Some(tx) = resp.transaction() {
                     tx.data()
@@ -310,15 +314,15 @@ impl ReadApi {
                     // don't have the input tx, so not much we can do. perhaps this is an Err?
                     Vec::new()
                 };
-                futures.push(get_balance_changes_from_effect(
+                results.push(get_balance_changes_from_effect(
                     &object_cache,
                     resp.effects.as_ref().ok_or_else(|| {
                         anyhow!("unable to derive balance changes because effect is empty")
                     })?,
                     input_objects,
+                    None,
                 ));
             }
-            let results = join_all(futures).await;
             for (result, entry) in results.into_iter().zip(temp_response.iter_mut()) {
                 match result {
                     Ok(balance_changes) => entry.1.balance_changes = Some(balance_changes),
@@ -331,13 +335,13 @@ impl ReadApi {
         }
 
         if opts.show_object_changes {
-            let mut futures = vec![];
+            let mut results = vec![];
             for resp in temp_response.values() {
                 let effects = resp.effects.as_ref().ok_or_else(|| {
                     anyhow!("unable to derive object changes because effect is empty")
                 })?;
 
-                futures.push(get_object_changes(
+                results.push(get_object_changes(
                     &object_cache,
                     resp.transaction
                         .as_ref()
@@ -353,7 +357,6 @@ impl ReadApi {
                     effects.all_deleted(),
                 ));
             }
-            let results = join_all(futures).await;
             for (result, entry) in results.into_iter().zip(temp_response.iter_mut()) {
                 match result {
                     Ok(object_changes) => entry.1.object_changes = Some(object_changes),
@@ -366,10 +369,18 @@ impl ReadApi {
         }
 
         let epoch_store = self.state.load_epoch_store_one_call_per_task();
-        Ok(temp_response
+        let converted_tx_block_resps = temp_response
             .into_iter()
             .map(|c| convert_to_response(c.1, &opts, epoch_store.module_cache()))
-            .collect::<Vec<_>>())
+            .collect::<Result<Vec<_>, _>>()?;
+
+        self.metrics
+            .get_tx_blocks_result_size
+            .report(converted_tx_block_resps.len() as u64);
+        self.metrics
+            .get_tx_blocks_result_size_total
+            .inc_by(converted_tx_block_resps.len() as u64);
+        Ok(converted_tx_block_resps)
     }
 }
 
@@ -425,6 +436,9 @@ impl ReadApiServer for ReadApi {
         options: Option<SuiObjectDataOptions>,
     ) -> RpcResult<Vec<SuiObjectResponse>> {
         if object_ids.len() <= QUERY_MAX_RESULT_LIMIT {
+            self.metrics
+                .get_objects_limit
+                .report(object_ids.len() as u64);
             let mut results = vec![];
             for object_id in object_ids {
                 results.push(self.get_object(object_id, options.clone()));
@@ -444,6 +458,12 @@ impl ReadApiServer for ReadApi {
                 Error::UnexpectedError(format!("Failed to fetch objects with error: {}", err))
             })?;
 
+            self.metrics
+                .get_objects_result_size
+                .report(objects.len() as u64);
+            self.metrics
+                .get_objects_result_size_total
+                .inc_by(objects.len() as u64);
             Ok(objects)
         } else {
             Err(anyhow!(UserInputError::SizeLimitExceeded {
@@ -454,7 +474,7 @@ impl ReadApiServer for ReadApi {
         }
     }
 
-    async fn try_get_past_object(
+    fn try_get_past_object(
         &self,
         object_id: ObjectID,
         version: SequenceNumber,
@@ -463,7 +483,6 @@ impl ReadApiServer for ReadApi {
         let past_read = self
             .state
             .get_past_object_read(&object_id, version)
-            .await
             .map_err(|e| {
                 error!("Failed to call try_get_past_object for object: {object_id:?} version: {version:?} with error: {e:?}");
                 anyhow!("{e}")
@@ -506,17 +525,16 @@ impl ReadApiServer for ReadApi {
         options: Option<SuiObjectDataOptions>,
     ) -> RpcResult<Vec<SuiPastObjectResponse>> {
         if past_objects.len() <= QUERY_MAX_RESULT_LIMIT {
-            let results = block_on(async {
-                let mut futures = vec![];
-                for past_object in past_objects {
-                    futures.push(self.try_get_past_object(
+            let results: Vec<_> = past_objects
+                .iter()
+                .map(|past_object| {
+                    self.try_get_past_object(
                         past_object.object_id,
                         past_object.version,
                         options.clone(),
-                    ));
-                }
-                join_all(futures).await
-            });
+                    )
+                })
+                .collect();
             let (oks, errs): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
             let success = oks.into_iter().filter_map(Result::ok).collect();
             let errors: Vec<_> = errs.into_iter().filter_map(Result::err).collect();
@@ -628,8 +646,7 @@ impl ReadApiServer for ReadApi {
         if opts.show_balance_changes {
             if let Some(effects) = &temp_response.effects {
                 let balance_changes =
-                    get_balance_changes_from_effect(&object_cache, effects, input_objects)
-                        .await
+                    get_balance_changes_from_effect(&object_cache, effects, input_objects, None)
                         .map_err(Error::SuiError)?;
                 temp_response.balance_changes = Some(balance_changes);
             }
@@ -647,17 +664,12 @@ impl ReadApiServer for ReadApi {
                     effects.all_changed_objects(),
                     effects.all_deleted(),
                 )
-                .await
                 .map_err(Error::SuiError)?;
                 temp_response.object_changes = Some(object_changes);
             }
         }
         let epoch_store = self.state.load_epoch_store_one_call_per_task();
-        Ok(convert_to_response(
-            temp_response,
-            &opts,
-            epoch_store.module_cache(),
-        ))
+        convert_to_response(temp_response, &opts, epoch_store.module_cache())
     }
 
     fn multi_get_transaction_blocks(
@@ -665,9 +677,7 @@ impl ReadApiServer for ReadApi {
         digests: Vec<TransactionDigest>,
         opts: Option<SuiTransactionBlockResponseOptions>,
     ) -> RpcResult<Vec<SuiTransactionBlockResponse>> {
-        Ok(block_on(
-            self.multi_get_transaction_blocks_internal(digests, opts),
-        )?)
+        Ok(self.multi_get_transaction_blocks_internal(digests, opts)?)
     }
 
     fn get_events(&self, transaction_digest: TransactionDigest) -> RpcResult<Vec<SuiEvent>> {
@@ -719,14 +729,12 @@ impl ReadApiServer for ReadApi {
         &self,
         // If `Some`, the query will start from the next item after the specified cursor
         cursor: Option<BigInt<u64>>,
-        limit: Option<BigInt<u64>>,
+        limit: Option<usize>,
         descending_order: bool,
     ) -> RpcResult<CheckpointPage> {
-        let limit = validate_limit(
-            limit.map(|l| *l as usize),
-            QUERY_MAX_RESULT_LIMIT_CHECKPOINTS,
-        )?;
+        let limit = validate_limit(limit, QUERY_MAX_RESULT_LIMIT_CHECKPOINTS)?;
 
+        self.metrics.get_checkpoints_limit.report(limit as u64);
         let mut data =
             self.state
                 .get_checkpoints(cursor.map(|s| *s), limit as u64 + 1, descending_order)?;
@@ -740,10 +748,46 @@ impl ReadApiServer for ReadApi {
             None
         };
 
+        self.metrics
+            .get_checkpoints_result_size
+            .report(data.len() as u64);
+        self.metrics
+            .get_checkpoints_result_size_total
+            .inc_by(data.len() as u64);
+
         Ok(CheckpointPage {
             data,
             next_cursor,
             has_next_page,
+        })
+    }
+
+    fn get_checkpoints_deprecated_limit(
+        &self,
+        cursor: Option<BigInt<u64>>,
+        limit: Option<BigInt<u64>>,
+        descending_order: bool,
+    ) -> RpcResult<CheckpointPage> {
+        self.get_checkpoints(cursor, limit.map(|l| *l as usize), descending_order)
+    }
+
+    fn get_loaded_child_objects(
+        &self,
+        digest: TransactionDigest,
+    ) -> RpcResult<SuiLoadedChildObjectsResponse> {
+        Ok(SuiLoadedChildObjectsResponse {
+            loaded_child_objects: match self.state.loaded_child_object_versions(&digest).map_err(
+                |e| {
+                    error!("Failed to get loaded child objects at {digest:?} with error: {e:?}");
+                    Error::SuiError(e)
+                },
+            )? {
+                Some(v) => v
+                    .into_iter()
+                    .map(|q| SuiLoadedChildObject::new(q.0, q.1))
+                    .collect::<Vec<_>>(),
+                None => vec![],
+            },
         })
     }
 }
@@ -1031,39 +1075,31 @@ fn convert_to_response(
     cache: IntermediateTransactionResponse,
     opts: &SuiTransactionBlockResponseOptions,
     module_cache: &impl GetModule,
-) -> SuiTransactionBlockResponse {
+) -> RpcResult<SuiTransactionBlockResponse> {
     let mut response = SuiTransactionBlockResponse::new(cache.digest);
     response.errors = cache.errors;
 
     if opts.show_raw_input && cache.transaction.is_some() {
         let sender_signed_data = cache.transaction.as_ref().unwrap().data();
-        match bcs::to_bytes(sender_signed_data) {
-            Ok(t) => response.raw_transaction = t,
-            Err(e) => response.errors.push(e.to_string()),
-        }
+        let raw_tx = bcs::to_bytes(sender_signed_data)
+            .map_err(|e| anyhow!("Failed to serialize raw transaction with error: {}", e))?;
+        response.raw_transaction = raw_tx;
     }
 
     if opts.show_input && cache.transaction.is_some() {
-        match SuiTransactionBlock::try_from(cache.transaction.unwrap().into_message(), module_cache)
-        {
-            Ok(t) => {
-                response.transaction = Some(t);
-            }
-            Err(e) => {
-                response.errors.push(e.to_string());
-            }
-        }
+        let tx_block =
+            SuiTransactionBlock::try_from(cache.transaction.unwrap().into_message(), module_cache)?;
+        response.transaction = Some(tx_block);
     }
 
     if opts.show_effects && cache.effects.is_some() {
-        match cache.effects.unwrap().try_into() {
-            Ok(effects) => {
-                response.effects = Some(effects);
-            }
-            Err(e) => {
-                response.errors.push(e.to_string());
-            }
-        }
+        let effects = cache.effects.unwrap().try_into().map_err(|e| {
+            anyhow!(
+                "Failed to convert transaction block effects with error: {}",
+                e
+            )
+        })?;
+        response.effects = Some(effects);
     }
 
     response.checkpoint = cache.checkpoint_seq;
@@ -1080,5 +1116,5 @@ fn convert_to_response(
     if opts.show_object_changes {
         response.object_changes = cache.object_changes;
     }
-    response
+    Ok(response)
 }

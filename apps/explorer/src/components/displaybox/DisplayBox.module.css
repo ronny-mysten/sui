@@ -2,6 +2,10 @@ div.imagebox {
     @apply flex h-full w-full items-center justify-center;
 }
 
+.display-container {
+    @apply h-full w-full;
+}
+
 img.smallimage {
     @apply cursor-pointer rounded-[6px] object-fill;
 }

@@ -3,7 +3,7 @@
 
 #[cfg(msim)]
 mod test {
-
+    use fastcrypto::ed25519::Ed25519KeyPair;
     use move_core_types::language_storage::StructTag;
     use rand::{distributions::uniform::SampleRange, thread_rng, Rng};
     use std::path::PathBuf;
@@ -26,12 +26,18 @@ mod test {
     use sui_core::authority::framework_injection;
     use sui_core::checkpoints::CheckpointStore;
     use sui_framework::BuiltInFramework;
+    use sui_json_rpc_types::SuiExecutionStatus;
+    use sui_json_rpc_types::SuiObjectDataOptions;
+    use sui_json_rpc_types::SuiTransactionBlockEffectsAPI;
     use sui_macros::{register_fail_point_async, register_fail_points, sim_test};
     use sui_protocol_config::{ProtocolVersion, SupportedProtocolVersions};
     use sui_simulator::{configs::*, SimConfig};
     use sui_types::base_types::{ObjectRef, SuiAddress};
     use sui_types::messages_checkpoint::VerifiedCheckpoint;
-    use test_utils::messages::get_sui_gas_object_with_wallet_context;
+    use sui_types::DEEPBOOK_OBJECT_ID;
+    use test_utils::messages::{
+        create_publish_move_package_transaction, get_sui_gas_object_with_wallet_context,
+    };
     use test_utils::network::{TestCluster, TestClusterBuilder};
     use tracing::{error, info};
     use typed_store::traits::Map;
@@ -93,7 +99,6 @@ mod test {
         test_simulated_load(TestInitData::new(&test_cluster).await, 120).await;
     }
 
-    #[ignore = "MUSTFIX"]
     #[sim_test(config = "test_config()")]
     async fn test_simulated_load_reconfig_restarts() {
         sui_protocol_config::ProtocolConfig::poison_get_for_min_version();
@@ -276,11 +281,13 @@ mod test {
                 SupportedProtocolVersions::new_for_testing(min_ver, max_ver),
             )
             .with_objects(init_framework.into_iter().map(|p| p.genesis_object()))
+            .with_stake_subsidy_start_epoch(10)
             .build()
             .await
             .unwrap();
 
         let test_init_data = TestInitData::new(&test_cluster).await;
+        let test_init_data_clone = test_init_data.clone();
 
         let finished = Arc::new(AtomicBool::new(false));
         let finished_clone = finished.clone();
@@ -292,6 +299,14 @@ mod test {
                 // Let all nodes run for a bit at this version.
                 tokio::time::sleep(Duration::from_secs(50)).await;
                 if version == max_ver {
+                    let stake_subsidy_start_epoch = test_cluster
+                        .sui_client()
+                        .governance_api()
+                        .get_latest_sui_system_state()
+                        .await
+                        .unwrap()
+                        .stake_subsidy_start_epoch;
+                    assert_eq!(stake_subsidy_start_epoch, 20);
                     break;
                 }
                 let next_version = version + 1;
@@ -317,10 +332,44 @@ mod test {
                         next_version,
                     ))
                     .await;
+                // TODO: move these DeepBook-specific checks into their own test or remove them
+                // make sure we can read the DeepBook package
+                assert!(test_cluster
+                    .sui_client()
+                    .read_api()
+                    .get_object_with_options(
+                        DEEPBOOK_OBJECT_ID,
+                        SuiObjectDataOptions::default().with_type()
+                    )
+                    .await
+                    .unwrap()
+                    .data
+                    .unwrap()
+                    .type_
+                    .unwrap()
+                    .is_package());
+
+                let keypair = test_init_data.keypair();
+                let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                path.push("tests/data/deepbook_client");
+                let tx = create_publish_move_package_transaction(
+                    test_init_data.all_gas[1].1,
+                    path,
+                    test_init_data.sender,
+                    &keypair,
+                    1_000_000_000,
+                    1000,
+                );
+                let response = test_cluster.execute_transaction(tx).await.unwrap();
+                assert_eq!(
+                    *response.effects.unwrap().status(),
+                    SuiExecutionStatus::Success
+                );
             }
             finished_clone.store(true, Ordering::SeqCst);
         });
-        test_simulated_load(test_init_data.clone(), 120).await;
+
+        test_simulated_load(test_init_data_clone, 120).await;
         loop {
             if finished.load(Ordering::Relaxed) {
                 break;
@@ -361,8 +410,8 @@ mod test {
     struct TestInitData {
         keystore_path: PathBuf,
         genesis: Genesis,
-        all_gas: Vec<(StructTag, ObjectRef)>,
-        sender: SuiAddress,
+        pub all_gas: Vec<(StructTag, ObjectRef)>,
+        pub sender: SuiAddress,
     }
 
     impl TestInitData {
@@ -375,6 +424,13 @@ mod test {
                     .await,
                 sender,
             }
+        }
+
+        pub fn keypair(&self) -> Arc<Ed25519KeyPair> {
+            Arc::new(
+                get_ed25519_keypair_from_keystore(self.keystore_path.clone(), &self.sender)
+                    .unwrap(),
+            )
         }
     }
 
@@ -389,15 +445,13 @@ mod test {
         let ed25519_keypair =
             Arc::new(get_ed25519_keypair_from_keystore(keystore_path, &sender).unwrap());
         let (_, gas) = all_gas.get(0).unwrap();
-        let (_move_struct, pay_coin) = all_gas.get(1).unwrap();
-        let primary_gas = (gas.clone(), sender, ed25519_keypair.clone());
-        let pay_coin = (pay_coin.clone(), sender, ed25519_keypair.clone());
+        let primary_coin = (gas.clone(), sender, ed25519_keypair.clone());
 
         let registry = prometheus::Registry::new();
         let proxy: Arc<dyn ValidatorProxy + Send + Sync> =
             Arc::new(LocalValidatorAggregatorProxy::from_genesis(&genesis, &registry, None).await);
 
-        let bank = BenchmarkBank::new(proxy.clone(), primary_gas, vec![pay_coin]);
+        let bank = BenchmarkBank::new(proxy.clone(), primary_coin);
         let system_state_observer = {
             let mut system_state_observer = SystemStateObserver::new(proxy.clone());
             if let Ok(_) = system_state_observer.state.changed().await {

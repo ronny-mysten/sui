@@ -1,7 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { formatAmountParts, roundFloat, useRpcClient } from '@mysten/core';
+import {
+    formatAmountParts,
+    useGetSystemState,
+    useRpcClient,
+} from '@mysten/core';
 import { useQuery } from '@tanstack/react-query';
 
 import { MetricGroup } from './MetricGroup';
@@ -23,7 +27,9 @@ function StatsWrapper(props: StatsProps) {
 function FormattedStatsAmount({
     amount,
     ...props
-}: Omit<StatsProps, 'children'> & { amount?: string | number | bigint }) {
+}: Omit<StatsProps, 'children'> & {
+    amount?: string | number | bigint;
+}) {
     const [formattedAmount, postfix] = formatAmountParts(amount);
 
     return (
@@ -45,37 +51,45 @@ export function HomeMetrics() {
         rpc.getReferenceGasPrice()
     );
 
+    const { data: systemState } = useGetSystemState();
+
     const { data: transactionCount } = useQuery(
         ['home', 'transaction-count'],
         () => rpc.getTotalTransactionBlocks(),
-        { cacheTime: 24 * 60 * 60 * 1000, staleTime: Infinity, retry: false }
+        { cacheTime: 24 * 60 * 60 * 1000, staleTime: Infinity, retry: 5 }
     );
 
     const { data: networkMetrics } = useQuery(
         ['home', 'metrics'],
         () => enhancedRpc.getNetworkMetrics(),
-        { cacheTime: 24 * 60 * 60 * 1000, staleTime: Infinity, retry: false }
+        { cacheTime: 24 * 60 * 60 * 1000, staleTime: Infinity, retry: 5 }
     );
 
     return (
-        <Card spacing="lg">
-            <Heading variant="heading4/semibold" color="steel-darker">
-                Sui Network Stats
-            </Heading>
+        <Card spacing="none">
+            <div className="pl-8 pt-8">
+                <Heading variant="heading4/semibold" color="steel-darker">
+                    Sui Network Stats
+                </Heading>
+            </div>
 
-            <div className="mt-8 space-y-7">
+            <div className="mt-8 space-y-7 pb-8">
                 <MetricGroup label="Current">
                     <StatsWrapper
                         label="TPS Now / Peak 30D"
                         tooltip="Peak TPS in the past 30 days excluding this epoch"
                         postfix={`/ ${
                             networkMetrics?.tps30Days
-                                ? roundFloat(networkMetrics.tps30Days, 2)
+                                ? Math.floor(
+                                      networkMetrics.tps30Days
+                                  ).toLocaleString()
                                 : '--'
                         }`}
                     >
                         {networkMetrics?.currentTps
-                            ? roundFloat(networkMetrics.currentTps, 2)
+                            ? Math.floor(
+                                  networkMetrics.currentTps
+                              ).toLocaleString()
                             : '--'}
                     </StatsWrapper>
                     <StatsWrapper
@@ -83,16 +97,22 @@ export function HomeMetrics() {
                         tooltip="Current gas price"
                         postfix="MIST"
                     >
-                        {gasData ? String(gasData) : null}
+                        {gasData ? gasData.toLocaleString() : null}
                     </StatsWrapper>
                     <StatsWrapper label="Epoch" tooltip="The current epoch">
-                        {networkMetrics?.currentEpoch}
+                        {systemState?.epoch
+                            ? BigInt(systemState?.epoch).toLocaleString()
+                            : null}
                     </StatsWrapper>
                     <StatsWrapper
                         label="Checkpoint"
                         tooltip="The current checkpoint"
                     >
-                        {networkMetrics?.currentCheckpoint}
+                        {networkMetrics?.currentCheckpoint
+                            ? BigInt(
+                                  networkMetrics?.currentCheckpoint
+                              ).toLocaleString()
+                            : null}
                     </StatsWrapper>
                 </MetricGroup>
 
@@ -112,11 +132,13 @@ export function HomeMetrics() {
                         tooltip="Total transaction blocks counter"
                         amount={transactionCount}
                     />
-                    <FormattedStatsAmount
+                    {/*
+                        TODO: enable when indexer is healthy
+                        <FormattedStatsAmount
                         label="Addresses"
                         tooltip="Addresses that have participated in at least one transaction since network genesis"
                         amount={networkMetrics?.totalAddresses}
-                    />
+                    /> */}
                 </MetricGroup>
             </div>
         </Card>

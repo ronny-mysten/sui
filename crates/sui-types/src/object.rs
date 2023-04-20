@@ -17,6 +17,7 @@ use serde_with::serde_as;
 use serde_with::Bytes;
 
 use crate::base_types::{MoveObjectType, ObjectIDParseError};
+use crate::coin::Coin;
 use crate::crypto::{default_hash, deterministic_random_account_key};
 use crate::error::{ExecutionError, ExecutionErrorKind, UserInputError, UserInputResult};
 use crate::error::{SuiError, SuiResult};
@@ -171,13 +172,41 @@ impl MoveObject {
     pub fn has_public_transfer(&self) -> bool {
         self.has_public_transfer
     }
+
     pub fn id(&self) -> ObjectID {
         Self::id_opt(&self.contents).unwrap()
     }
 
     pub fn id_opt(contents: &[u8]) -> Result<ObjectID, ObjectIDParseError> {
-        // TODO: Ensure safe index to to parse ObjectID. https://github.com/MystenLabs/sui/issues/6278
+        if ID_END_INDEX > contents.len() {
+            return Err(ObjectIDParseError::TryFromSliceError);
+        }
         ObjectID::try_from(&contents[0..ID_END_INDEX])
+    }
+
+    /// Return the `value: u64` field of a `Coin<T>` type.
+    /// Useful for reading the coin without deserializing the object into a Move value
+    /// It is the caller's responsibility to check that `self` is a coin--this function
+    /// may panic or do something unexpected otherwise.
+    pub fn get_coin_value_unsafe(&self) -> u64 {
+        debug_assert!(self.type_.is_coin());
+        // 32 bytes for object ID, 8 for balance
+        debug_assert!(self.contents.len() == 40);
+
+        // unwrap safe because we checked that it is a coin
+        u64::from_le_bytes(<[u8; 8]>::try_from(&self.contents[ID_END_INDEX..]).unwrap())
+    }
+
+    /// Update the `value: u64` field of a `Coin<T>` type.
+    /// Useful for updating the coin without deserializing the object into a Move value
+    /// It is the caller's responsibility to check that `self` is a coin--this function
+    /// may panic or do something unexpected otherwise.
+    pub fn set_coin_value_unsafe(&mut self, value: u64) {
+        debug_assert!(self.type_.is_coin());
+        // 32 bytes for object ID, 8 for balance
+        debug_assert!(self.contents.len() == 40);
+
+        self.contents.splice(ID_END_INDEX.., value.to_le_bytes());
     }
 
     pub fn is_coin(&self) -> bool {
@@ -228,12 +257,6 @@ impl MoveObject {
         debug_assert_eq!(self.id(), old_id);
 
         Ok(())
-    }
-
-    /// Update a coin object without requiring the current ProtocolConfig.
-    /// Asserts that the gas object is not unexpectedly large.
-    pub fn update_coin_contents(&mut self, new_contents: Vec<u8>) {
-        self.update_contents_with_limit(new_contents, 256).unwrap()
     }
 
     /// Sets the version of this object to a new value which is assumed to be higher (and checked to
@@ -327,6 +350,14 @@ impl MoveObject {
 
     /// Get the total amount of SUI embedded in `self`. Intended for testing purposes
     pub fn get_total_sui(&self, resolver: &impl GetModule) -> Result<u64, SuiError> {
+        if self.type_.is_gas_coin() {
+            // Fast path without deserialization.
+            return Ok(self.get_coin_value_unsafe());
+        }
+        // If this is a coin but not a SUI coin, the SUI balance must be 0.
+        if self.type_.is_coin() {
+            return Ok(0);
+        }
         let layout = self.get_layout(ObjectFormatOptions::with_types(), resolver)?;
         let move_struct = self.to_move_struct(&layout)?;
         Ok(Self::get_total_sui_in_struct(&move_struct, 0))
@@ -440,6 +471,7 @@ impl Data {
 #[derive(
     Eq, PartialEq, Debug, Clone, Copy, Deserialize, Serialize, Hash, JsonSchema, Ord, PartialOrd,
 )]
+#[cfg_attr(feature = "fuzzing", derive(proptest_derive::Arbitrary))]
 pub enum Owner {
     /// Object is exclusively owned by a single address, and is mutable.
     AddressOwner(SuiAddress),
@@ -561,7 +593,9 @@ impl Object {
             previous_transaction,
         );
 
+        #[cfg(not(msim))]
         assert!(ret.is_system_package());
+
         ret
     }
 
@@ -596,14 +630,14 @@ impl Object {
         new_package_id: ObjectID,
         modules: &[CompiledModule],
         previous_transaction: TransactionDigest,
-        max_move_package_size: u64,
+        protocol_config: &ProtocolConfig,
         dependencies: impl IntoIterator<Item = &'p MovePackage>,
     ) -> Result<Self, ExecutionError> {
         Ok(Self::new_package_from_data(
             Data::Package(previous_package.new_upgraded(
                 new_package_id,
                 modules,
-                max_move_package_size,
+                protocol_config,
                 dependencies,
             )?),
             previous_transaction,
@@ -689,6 +723,32 @@ impl Object {
         ObjectDigest::new(default_hash(self))
     }
 
+    pub fn is_coin(&self) -> bool {
+        if let Some(move_object) = self.data.try_as_move() {
+            move_object.type_().is_coin()
+        } else {
+            false
+        }
+    }
+
+    // TODO: use `MoveObj::get_balance_unsafe` instead.
+    // context: https://github.com/MystenLabs/sui/pull/10679#discussion_r1165877816
+    pub fn as_coin_maybe(&self) -> Option<Coin> {
+        if let Some(move_object) = self.data.try_as_move() {
+            let coin: Coin = bcs::from_bytes(move_object.contents()).ok()?;
+            Some(coin)
+        } else {
+            None
+        }
+    }
+
+    pub fn coin_type_maybe(&self) -> Option<TypeTag> {
+        if let Some(move_object) = self.data.try_as_move() {
+            move_object.type_().coin_type_maybe()
+        } else {
+            None
+        }
+    }
     /// Approximate size of the object in bytes. This is used for gas metering.
     /// This will be slgihtly different from the serialized size, but
     /// we also don't want to serialize the object just to get the size.
@@ -1057,4 +1117,49 @@ impl Display for PastObjectRead {
             }
         }
     }
+}
+
+#[test]
+fn test_get_coin_value_unsafe() {
+    fn test_for_value(v: u64) {
+        let g = GasCoin::new_for_testing(v).to_object(OBJECT_START_VERSION);
+        assert_eq!(g.get_coin_value_unsafe(), v);
+        assert_eq!(GasCoin::try_from(&g).unwrap().value(), v);
+    }
+
+    test_for_value(0);
+    test_for_value(1);
+    test_for_value(8);
+    test_for_value(9);
+    test_for_value(u8::MAX as u64);
+    test_for_value(u8::MAX as u64 + 1);
+    test_for_value(u16::MAX as u64);
+    test_for_value(u16::MAX as u64 + 1);
+    test_for_value(u32::MAX as u64);
+    test_for_value(u32::MAX as u64 + 1);
+    test_for_value(u64::MAX);
+}
+
+#[test]
+fn test_set_coin_value_unsafe() {
+    fn test_for_value(v: u64) {
+        let mut g = GasCoin::new_for_testing(u64::MAX).to_object(OBJECT_START_VERSION);
+        g.set_coin_value_unsafe(v);
+        assert_eq!(g.get_coin_value_unsafe(), v);
+        assert_eq!(GasCoin::try_from(&g).unwrap().value(), v);
+        assert_eq!(g.version(), OBJECT_START_VERSION);
+        assert_eq!(g.contents().len(), 40);
+    }
+
+    test_for_value(0);
+    test_for_value(1);
+    test_for_value(8);
+    test_for_value(9);
+    test_for_value(u8::MAX as u64);
+    test_for_value(u8::MAX as u64 + 1);
+    test_for_value(u16::MAX as u64);
+    test_for_value(u16::MAX as u64 + 1);
+    test_for_value(u32::MAX as u64);
+    test_for_value(u32::MAX as u64 + 1);
+    test_for_value(u64::MAX);
 }

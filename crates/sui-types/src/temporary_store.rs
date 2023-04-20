@@ -14,7 +14,6 @@ use serde_with::serde_as;
 use sui_protocol_config::ProtocolConfig;
 use tracing::trace;
 
-use crate::coin::Coin;
 use crate::committee::EpochId;
 use crate::messages::TransactionEvents;
 use crate::storage::ObjectStore;
@@ -39,13 +38,19 @@ use crate::{
 };
 use crate::{is_system_package, SUI_SYSTEM_STATE_OBJECT_ID};
 
+pub type WrittenObjects = BTreeMap<ObjectID, (ObjectRef, Object, WriteKind)>;
+pub type ObjectMap = BTreeMap<ObjectID, Object>;
+pub type TxCoins = (ObjectMap, WrittenObjects);
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct InnerTemporaryStore {
-    pub objects: BTreeMap<ObjectID, Object>,
+    pub objects: ObjectMap,
     pub mutable_inputs: Vec<ObjectRef>,
-    pub written: BTreeMap<ObjectID, (ObjectRef, Object, WriteKind)>,
+    pub written: WrittenObjects,
+    // deleted or wrapped or unwrap-then-delete
     pub deleted: BTreeMap<ObjectID, (SequenceNumber, DeleteKind)>,
+    pub loaded_child_objects: BTreeMap<ObjectID, SequenceNumber>,
     pub events: TransactionEvents,
     pub max_binary_format_version: u32,
 }
@@ -144,6 +149,9 @@ pub struct TemporaryStore<S> {
     written: BTreeMap<ObjectID, (Object, WriteKind)>, // Objects written
     /// Objects actively deleted.
     deleted: BTreeMap<ObjectID, (SequenceNumber, DeleteKind)>,
+    /// Child objects loaded during dynamic field opers
+    /// Currently onply populated for full nodes, not for validators
+    loaded_child_objects: BTreeMap<ObjectID, SequenceNumber>,
     /// Ordered sequence of events emitted by execution
     events: Vec<Event>,
     gas_charged: Option<(ObjectID, GasCostSummary)>,
@@ -175,6 +183,7 @@ impl<S> TemporaryStore<S> {
             gas_charged: None,
             storage_rebate_rate: protocol_config.storage_rebate_rate(),
             protocol_config: protocol_config.clone(),
+            loaded_child_objects: BTreeMap::new(),
         }
     }
 
@@ -205,6 +214,7 @@ impl<S> TemporaryStore<S> {
             gas_charged: None,
             storage_rebate_rate: protocol_config.storage_rebate_rate(),
             protocol_config: protocol_config.clone(),
+            loaded_child_objects: BTreeMap::new(),
         }
     }
 
@@ -275,6 +285,7 @@ impl<S> TemporaryStore<S> {
             deleted,
             events: TransactionEvents { data: self.events },
             max_binary_format_version: self.protocol_config.move_binary_format_version(),
+            loaded_child_objects: self.loaded_child_objects,
         }
     }
 
@@ -463,10 +474,11 @@ impl<S> TemporaryStore<S> {
 
     pub fn smash_gas(&mut self, gas: &[ObjectRef]) -> Result<ObjectRef, ExecutionError> {
         if gas.len() > 1 {
-            let mut gas_coins: Vec<(Object, Coin)> = gas
+            // sum the value of all gas coins
+            let new_balance = gas
                 .iter()
                 .map(|obj_ref| {
-                    let obj = self.objects().get(&obj_ref.0).unwrap().clone();
+                    let obj = self.objects().get(&obj_ref.0).unwrap();
                     let Data::Move(move_obj) = &obj.data else {
                         return Err(ExecutionError::invariant_violation(
                             "Provided non-gas coin object as input for gas!"
@@ -477,30 +489,25 @@ impl<S> TemporaryStore<S> {
                             "Provided non-gas coin object as input for gas!",
                         ));
                     }
-                    let coin = Coin::from_bcs_bytes(move_obj.contents()).map_err(|_| {
-                        ExecutionError::invariant_violation(
-                            "Deserializing Gas coin should not fail!",
-                        )
-                    })?;
-                    Ok((obj, coin))
+                    Ok(move_obj.get_coin_value_unsafe())
                 })
-                .collect::<Result<_, _>>()?;
-            let (mut gas_object, mut gas_coin) = gas_coins.swap_remove(0);
-            for (other_object, other_coin) in gas_coins {
-                gas_coin.add(other_coin.balance)?;
-                self.delete_object(
-                    &other_object.id(),
-                    other_object.version(),
-                    DeleteKind::Normal,
-                )
+                .collect::<Result<Vec<u64>, ExecutionError>>()?
+                .iter()
+                .sum();
+            // unwrap safe because we checked that this exists in `self.objects()` above
+            let mut primary_gas_object = self.objects().get(&gas[0].0).unwrap().clone();
+            // delete all gas objects except the primary_gas_object
+            for (id, version, _digest) in &gas[1..] {
+                debug_assert_ne!(*id, primary_gas_object.id());
+                self.delete_object(id, *version, DeleteKind::Normal)
             }
-            let new_contents = bcs::to_bytes(&gas_coin).map_err(|_| {
-                ExecutionError::invariant_violation("Deserializing Gas coin should not fail!")
-            })?;
-            // unwrap is safe because we checked that it was a coin object above.
-            let move_obj = gas_object.data.try_as_move_mut().unwrap();
-            move_obj.update_coin_contents(new_contents);
-            self.write_object(gas_object, WriteKind::Mutate);
+            // unwrap is safe because we checked that the primary gas object was a coin object above.
+            primary_gas_object
+                .data
+                .try_as_move_mut()
+                .unwrap()
+                .set_coin_value_unsafe(new_balance);
+            self.write_object(primary_gas_object, WriteKind::Mutate);
         }
         Ok(gas[0])
     }
@@ -536,7 +543,7 @@ impl<S> TemporaryStore<S> {
 
     /// Resets any mutations, deletions, and events recorded in the store, as well as any storage costs and
     /// rebates, then Re-runs gas smashing. Effects on store are now as if we were about to begin execution
-    pub fn reset(&mut self, gas: &[ObjectRef], gas_status: &mut SuiGasStatus<'_>) {
+    pub fn reset(&mut self, gas: &[ObjectRef], gas_status: &mut SuiGasStatus) {
         self.drop_writes();
         gas_status.reset_storage_cost_and_rebate();
 
@@ -564,6 +571,12 @@ impl<S> TemporaryStore<S> {
                 ObjectChange::Delete(version, kind) => self.delete_object(&id, version, kind),
             }
         }
+    }
+    pub fn save_loaded_child_objects(
+        &mut self,
+        loaded_child_objects: BTreeMap<ObjectID, SequenceNumber>,
+    ) {
+        self.loaded_child_objects = loaded_child_objects;
     }
 
     pub fn estimate_effects_size_upperbound(&self) -> usize {
@@ -768,7 +781,7 @@ impl<S: ObjectStore> TemporaryStore<S> {
     pub fn charge_gas_legacy<T>(
         &mut self,
         gas_object_id: ObjectID,
-        gas_status: &mut SuiGasStatus<'_>,
+        gas_status: &mut SuiGasStatus,
         execution_result: &mut Result<T, ExecutionError>,
         gas: &[ObjectRef],
     ) {
@@ -860,7 +873,7 @@ impl<S: ObjectStore> TemporaryStore<S> {
     /// gas_object_id can be None if this is a system transaction.
     fn charge_gas_for_storage_changes(
         &mut self,
-        gas_status: &mut SuiGasStatus<'_>,
+        gas_status: &mut SuiGasStatus,
         gas_object_id: ObjectID,
     ) -> Result<u64, ExecutionError> {
         let mut total_bytes_written_deleted = 0;
@@ -957,7 +970,7 @@ impl<S: ObjectStore> TemporaryStore<S> {
     pub fn charge_gas<T>(
         &mut self,
         gas_object_id: Option<ObjectID>,
-        gas_status: &mut SuiGasStatus<'_>,
+        gas_status: &mut SuiGasStatus,
         execution_result: &mut Result<T, ExecutionError>,
         gas: &[ObjectRef],
     ) -> GasCostSummary {
@@ -985,18 +998,18 @@ impl<S: ObjectStore> TemporaryStore<S> {
             }
         }
 
+        // compute and collect storage charges
         self.ensure_gas_and_input_mutated(gas_object_id);
         self.collect_storage_and_rebate(gas_status);
+        // system transactions (None gas_object_id)  do not have gas and so do not charge
+        // for storage, however they track storage values to check for conservation rules
         if let Some(gas_object_id) = gas_object_id {
-            if let Err(err) = gas_status.charge_storage_and_rebate() {
-                self.reset(gas, gas_status);
-                gas_status.adjust_computation_on_out_of_gas();
-                self.ensure_gas_and_input_mutated(Some(gas_object_id));
-                self.collect_rebate(gas_status);
-                if execution_result.is_ok() {
-                    *execution_result = Err(err);
-                }
+            if self.protocol_config.gas_model_version() < 4 {
+                self.handle_storage_and_rebate_v1(gas, gas_object_id, gas_status, execution_result)
+            } else {
+                self.handle_storage_and_rebate_v2(gas, gas_object_id, gas_status, execution_result)
             }
+
             let cost_summary = gas_status.summary();
             let gas_used = cost_summary.net_gas_usage();
 
@@ -1009,6 +1022,53 @@ impl<S: ObjectStore> TemporaryStore<S> {
             cost_summary
         } else {
             GasCostSummary::default()
+        }
+    }
+
+    fn handle_storage_and_rebate_v1<T>(
+        &mut self,
+        gas: &[ObjectRef],
+        gas_object_id: ObjectID,
+        gas_status: &mut SuiGasStatus,
+        execution_result: &mut Result<T, ExecutionError>,
+    ) {
+        if let Err(err) = gas_status.charge_storage_and_rebate() {
+            self.reset(gas, gas_status);
+            gas_status.adjust_computation_on_out_of_gas();
+            self.ensure_gas_and_input_mutated(Some(gas_object_id));
+            self.collect_rebate(gas_status);
+            if execution_result.is_ok() {
+                *execution_result = Err(err);
+            }
+        }
+    }
+
+    fn handle_storage_and_rebate_v2<T>(
+        &mut self,
+        gas: &[ObjectRef],
+        gas_object_id: ObjectID,
+        gas_status: &mut SuiGasStatus,
+        execution_result: &mut Result<T, ExecutionError>,
+    ) {
+        if let Err(err) = gas_status.charge_storage_and_rebate() {
+            // we run out of gas charging storage, reset and try charging for storage again.
+            // Input objects are touched and so they have a storage cost
+            self.reset(gas, gas_status);
+            self.ensure_gas_and_input_mutated(Some(gas_object_id));
+            self.collect_storage_and_rebate(gas_status);
+            if let Err(err) = gas_status.charge_storage_and_rebate() {
+                // we run out of gas attempting to charge for the input objects exclusively,
+                // deal with this edge case by not charging for storage
+                self.reset(gas, gas_status);
+                gas_status.adjust_computation_on_out_of_gas();
+                self.ensure_gas_and_input_mutated(Some(gas_object_id));
+                self.collect_rebate(gas_status);
+                if execution_result.is_ok() {
+                    *execution_result = Err(err);
+                }
+            } else if execution_result.is_ok() {
+                *execution_result = Err(err);
+            }
         }
     }
 
@@ -1064,7 +1124,7 @@ impl<S: ObjectStore> TemporaryStore<S> {
     /// All objects will be updated with their new (current) storage rebate/cost.
     /// `SuiGasStatus` `storage_rebate` and `storage_gas_units` track the transaction
     /// overall storage rebate and cost.
-    fn collect_storage_and_rebate(&mut self, gas_status: &mut SuiGasStatus<'_>) {
+    fn collect_storage_and_rebate(&mut self, gas_status: &mut SuiGasStatus) {
         let mut objects_to_update = vec![];
         for (object_id, (object, write_kind)) in &mut self.written {
             // get the object storage_rebate in input for mutated objects
@@ -1128,7 +1188,7 @@ impl<S: ObjectStore> TemporaryStore<S> {
         }
     }
 
-    fn collect_rebate(&self, gas_status: &mut SuiGasStatus<'_>) {
+    fn collect_rebate(&self, gas_status: &mut SuiGasStatus) {
         for (object_id, (version, kind)) in &self.deleted {
             match kind {
                 DeleteKind::Wrap | DeleteKind::Normal => {
@@ -1418,6 +1478,13 @@ impl<S: ChildObjectResolver> Storage for TemporaryStore<S> {
 
     fn apply_object_changes(&mut self, changes: BTreeMap<ObjectID, ObjectChange>) {
         TemporaryStore::apply_object_changes(self, changes)
+    }
+
+    fn save_loaded_child_objects(
+        &mut self,
+        loaded_child_objects: BTreeMap<ObjectID, SequenceNumber>,
+    ) {
+        TemporaryStore::save_loaded_child_objects(self, loaded_child_objects)
     }
 }
 
