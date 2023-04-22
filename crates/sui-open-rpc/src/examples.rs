@@ -53,9 +53,15 @@ use sui_types::utils::to_sender_signed_transaction;
 use sui_types::{parse_sui_struct_tag, SUI_FRAMEWORK_OBJECT_ID};
 use sui_types::coin::CoinMetadata;
 
+
 struct Examples {
     function_name: String,
     examples: Vec<ExamplePairing>,
+}
+
+#[derive(serde::Serialize)]
+struct Value {
+    value: String
 }
 
 impl Examples {
@@ -91,8 +97,6 @@ impl RpcExampleProvider {
             self.execute_transaction_example(),
             self.get_checkpoint_example(),
             self.get_checkpoints(),
-            //self.sui_dev_inspect_transaction_block(),
-            //self.sui_dry_run_transaction_block(),
             self.sui_get_committee_info(), 
             self.sui_get_reference_gas_price(),
             self.suix_get_all_balances(),
@@ -631,91 +635,6 @@ impl RpcExampleProvider {
         )
     }
 
-    /*
-    fn sui_dry_run_transaction_block(&mut self) -> Examples {
-        let (data, _, _, _, result) = self.get_transfer_data_response();
-        let data1 = data.clone();
-        let tx_bytes = json!(TransactionBlockBytes::from_data(data).unwrap());
-        let balchanges = json!(tx_bytes[0]["balance_changes"]);
-        let objchanges = json!(tx_bytes[0]["object_changes"]);
-        let effects = json!(tx_bytes[0]["effects"]);
-        let events = json!(tx_bytes[0]["events"]);
-        
-
-        struct NoOpsModuleResolver;
-        impl ModuleResolver for NoOpsModuleResolver {
-            type Error = Error;
-            fn get_module(&self, _id: &ModuleId) -> Result<Option<Vec<u8>>, Self::Error> {
-                Ok(None)
-            }
-        }
-
-        println!("{}", serde_json::to_string_pretty(&tx_bytes).unwrap());
-
-        let response = DryRunTransactionBlockResponse {
-            balance_changes: serde_json::from_value(balchanges).unwrap(),
-            effects: serde_json::from_value(effects).unwrap(),
-            events: serde_json::from_value(events).unwrap(),
-            object_changes: serde_json::from_value(objchanges).unwrap(),
-            input: SuiTransactionBlockData::try_from(data1, &&mut NoOpsModuleResolver).unwrap(),
-        };
-
-        /*let vals = json!(committee[0]["voting_rights"]);
-        let suicomm = SuiCommittee {
-            epoch: epoch,
-            validators: serde_json::from_value(vals).unwrap(),
-        };*/
-        
-        Examples::new(
-            "sui_dryRunTransactionBlock",
-            vec![ExamplePairing::new(
-                "Testing a new example.",
-                vec![
-                    ("tx_bytes", json!(tx_bytes)),
-                ],
-                json!(response),
-            )],
-        )
-    }
-    
-
-    fn sui_dev_inspect_transaction_block(&mut self) -> Examples {
-        let (data, _, _, _, result) = self.get_transfer_data_response();
-        let tx_bytes = TransactionBlockBytes::from_data(data).unwrap();
-        let gas_price = 10;
-        let epoch = 7;
-        let sender = SuiAddress::from(ObjectID::new(self.rng.gen()));
-        
-        Examples::new(
-            "sui_devInspectTransactionBlock",
-            vec![ExamplePairing::new(
-                "Execute a transaction with serialized signatures.",
-                vec![
-                    (
-                        "sender_address",
-                        json!(sender),
-                    ),
-                    (
-                        "tx_bytes", 
-                        json!(tx_bytes.tx_bytes)
-                    ),
-                    (
-                        "gas_price",
-                        json!(gas_price),
-                    ),
-                    (
-                        "epoch",
-                        json!(epoch),
-                    ),
-                    
-                ],
-                json!(result),
-            )],
-        )
-    }
-
-    */
-
     fn sui_get_committee_info(&mut self) -> Examples {
         let epoch = 5000;
         let committee = json!(Committee::new_simple_test_committee_of_size(4));
@@ -729,7 +648,7 @@ impl RpcExampleProvider {
             "suix_getCommitteeInfo",
             vec![ExamplePairing::new(
                 "Get committee information for epoch 5000.",
-                vec![ ("epoch", serde_json::Value::String(epoch.to_string())), ],
+                vec![ ("epoch", json!(epoch.to_string())), ],
                 json!(suicomm),
             )],
         ) 
@@ -904,16 +823,23 @@ impl RpcExampleProvider {
 
     fn suix_get_total_supply(&mut self) -> Examples {
 
-        let result = "Placeholder".to_string();
+        let mut coin = ObjectID::new(self.rng.gen()).to_string();
+        coin.push_str("::acoin::ACOIN");
+
+        let result = Value {
+            value: "12023692".to_string()
+        };
 
         Examples::new(
             "suix_getTotalSupply",
             vec![ExamplePairing::new(
                 "Get total supply for the type of coin provided.",
-                vec![],
+                vec![("coin_type", json!(coin))],
                 json!(result)
             )]
         )
     }
+
+
 
 }

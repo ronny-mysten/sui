@@ -1958,7 +1958,24 @@
         "schema": {
           "$ref": "#/components/schemas/Supply"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Get total supply for the type of coin provided.",
+          "params": [
+            {
+              "name": "coin_type",
+              "value": "0xf44d295a385dc3544d211411b865e8bc4f01f49186970c7cf61e1cc829cc0be7::acoin::ACOIN"
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "value": "12023692"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "suix_queryEvents",
