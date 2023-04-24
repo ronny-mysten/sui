@@ -19,7 +19,7 @@ use sui_json::SuiJsonValue;
 use sui_json_rpc::error::Error;
 use sui_json_rpc_types::SuiTypeTag;
 use sui_json_rpc_types::{
-    Balance, Checkpoint, CheckpointId, EventPage, MoveCallParams, ObjectChange, OwnedObjectRef,
+    Balance, Checkpoint, CheckpointId, CheckpointPage, EventPage, MoveCallParams, ObjectChange, OwnedObjectRef,
     RPCTransactionRequestParams, SuiData, SuiEvent, SuiExecutionStatus, SuiObjectData,
     SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectRef, SuiObjectResponse,
     SuiObjectResponseQuery, SuiParsedData, SuiPastObjectResponse, SuiTransactionBlock,
@@ -331,12 +331,13 @@ impl RpcExampleProvider {
 
     fn get_checkpoints(&mut self) -> Examples {
         
-        let limit = 3;
-        let descending_order = true;
-        let result = (0..4)
-        .map(|_| Checkpoint {
+        let limit = 4;
+        let descending_order = false;
+        let seq = 1004;
+        let page = (0..4)
+        .map(|idx| Checkpoint {
             epoch: 5000,
-            sequence_number: self.rng.gen_range(1004..1843),
+            sequence_number: seq+1+idx,
             digest: CheckpointDigest::new(self.rng.gen()),
             network_total_transactions: 792385,
             previous_digest: Some(CheckpointDigest::new(self.rng.gen())),
@@ -348,13 +349,19 @@ impl RpcExampleProvider {
             validator_signature: AggregateAuthoritySignature::default(),
         })
         .collect::<Vec<_>>();
+        let pagelen = page.len() as u64;
+        let result = CheckpointPage {
+            data: page,
+            next_cursor: Some((seq + pagelen).into()),
+            has_next_page: true,
+        };
 
         Examples::new(
             "sui_getCheckpoints",
             vec![ExamplePairing::new(
                 "Get a paginated list in descending order of all checkpoints starting at the provided cursor. Each page of results has a maximum number of checkpoints set by the provided limit.",
                 vec![(
-                        "cursor", json!(ObjectID::new(self.rng.gen())),
+                        "cursor", json!(seq.to_string()),
                     ),
                     (
                         "limit", json!(limit),
