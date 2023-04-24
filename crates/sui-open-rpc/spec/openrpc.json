@@ -2144,7 +2144,6 @@
       ],
       "result": {
         "name": "SuiAddress",
-        "required": true,
         "schema": {
           "$ref": "#/components/schemas/SuiAddress"
         }
