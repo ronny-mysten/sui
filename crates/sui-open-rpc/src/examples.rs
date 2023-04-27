@@ -26,7 +26,7 @@ use sui_json_rpc_types::{
     SuiTransactionBlockData, SuiTransactionBlockEffects, SuiTransactionBlockEffectsV1,
     SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
     SuiTransactionBlockResponseQuery, TransactionBlockBytes, TransactionBlocksPage,
-    TransferObjectParams, SuiCommittee, Coin, CoinPage,
+    TransferObjectParams, SuiCommittee, Coin, CoinPage, DynamicFieldPage,
 };
 use sui_open_rpc::ExamplePairing;
 use sui_types::base_types::random_object_ref;
@@ -53,6 +53,10 @@ use sui_types::utils::to_sender_signed_transaction;
 use sui_types::{parse_sui_struct_tag, SUI_FRAMEWORK_OBJECT_ID};
 use sui_types::coin::CoinMetadata;
 use sui_types::balance::Supply;
+use sui_types::dynamic_field::DynamicFieldInfo;
+use sui_types::dynamic_field::DynamicFieldType;
+use sui_types::dynamic_field::DynamicFieldName;
+use sui_types::TypeTag;
 
 
 struct Examples {
@@ -107,6 +111,9 @@ impl RpcExampleProvider {
             self.sui_get_latest_checkpoint_sequence_number(),
             self.suix_get_coins(),
             self.suix_get_total_supply(),
+            self.suix_get_dynamic_fields(),
+            self.suix_get_dynamic_field_object(),
+            self.suix_get_owned_objects(),
         ]
         .into_iter()
         .map(|example| (example.function_name, example.examples))
@@ -846,4 +853,178 @@ impl RpcExampleProvider {
             )]
         )
     }
+
+    fn suix_get_dynamic_fields(&mut self) -> Examples {
+        let mut rng = rand::thread_rng();
+        let data = (0..3)
+        .map(|_| DynamicFieldInfo {
+            name:  DynamicFieldName {
+                type_: TypeTag::Address,
+                value: json!(ObjectID::new(self.rng.gen()))
+            },
+            bcs_name: vec![rng.gen_range(1..254)],
+            type_: DynamicFieldType::DynamicField,
+            object_type: "vector<0x2::object::ID>".to_string(),
+            object_id: ObjectID::new(self.rng.gen()),
+            version: SequenceNumber::from_u64(rng.gen_range(2450624..6450624)),
+            digest: ObjectDigest::new(self.rng.gen())
+        }).collect::<Vec<_>>();
+
+        let result = DynamicFieldPage {
+            data: data,
+            next_cursor: Some(ObjectID::new(self.rng.gen())),
+            has_next_page: true
+        };
+
+        Examples::new(
+            "suix_getDynamicFields",
+            vec![ExamplePairing::new(
+                "Get dynamic fields for the object the request provides. Return a paginated list of `limit` dynamic field results per page, beginning with the dynamic field immediately after the provided object ID.",
+                vec![("parent_object_id", json!(ObjectID::new(self.rng.gen()))),
+                     ("cursor", json!(ObjectID::new(self.rng.gen()))),
+                     ("limit", json!(3))],
+                json!(result),
+            )]
+        )
+    }
+
+    fn suix_get_dynamic_field_object(&mut self) -> Examples {
+        let parent = ObjectID::new(self.rng.gen());
+        let object_id = ObjectID::new(self.rng.gen());
+        let coin = GasCoin::new(object_id, 10000);
+        
+        let dynafield = DynamicFieldName {
+            type_: TypeTag::Address,
+            value: json!(ObjectID::new(self.rng.gen()))
+        };
+        let result = SuiObjectResponse::new_with_data(SuiObjectData {
+            content: Some(
+                SuiParsedData::try_from_object(
+                    coin.to_object(SequenceNumber::from_u64(1)),
+                    GasCoin::layout(),
+                )
+                .unwrap(),
+            ),
+            owner: Some(Owner::AddressOwner(SuiAddress::from(ObjectID::new(
+                self.rng.gen(),
+            )))),
+            previous_transaction: Some(TransactionDigest::new(self.rng.gen())),
+            storage_rebate: Some(100),
+            object_id: ObjectID::new(self.rng.gen()),
+            version: SequenceNumber::from_u64(1),
+            digest: ObjectDigest::new(self.rng.gen()),
+            type_: Some(ObjectType::Struct(MoveObjectType::gas_coin())),
+            bcs: None,
+            display: None,
+        });
+
+        Examples::new(
+            "suix_getDynamicFieldObject",
+            vec![ExamplePairing::new(
+                "Get the information for the dynamic field the request provides.",
+                vec![
+                    ("parent_object_id", json!(parent)),
+                    ("name", json!(dynafield))
+                ],
+                json!(result)
+            )]
+        )
+    }
+
+    fn suix_get_owned_objects(&mut self) -> Examples {
+
+        let owner = SuiAddress::from(ObjectID::new(self.rng.gen()));
+        let object_id = ObjectID::new(self.rng.gen());
+        let coin = GasCoin::new(object_id, 10000);
+        let options = Some(
+            SuiObjectDataOptions::new()
+                .with_type()
+                .with_owner()
+                .with_previous_transaction()
+                .with_display()
+                .with_content()
+                .with_bcs()
+        );
+        options.clone().unwrap().show_storage_rebate = true;
+
+        println!("{:?}", options);
+
+        let result = SuiObjectResponse::new_with_data(SuiObjectData {
+            content: Some(
+                SuiParsedData::try_from_object(
+                    coin.to_object(SequenceNumber::from_u64(1)),
+                    GasCoin::layout(),
+                )
+                .unwrap(),
+            ),
+            owner: Some(Owner::AddressOwner(SuiAddress::from(ObjectID::new(
+                self.rng.gen(),
+            )))),
+            previous_transaction: Some(TransactionDigest::new(self.rng.gen())),
+            storage_rebate: Some(100),
+            object_id: ObjectID::new(self.rng.gen()),
+            version: SequenceNumber::from_u64(1),
+            digest: ObjectDigest::new(self.rng.gen()),
+            type_: Some(ObjectType::Struct(MoveObjectType::gas_coin())),
+            bcs: None,
+            display: None,
+        });
+
+        Examples::new(
+            "suix_getOwnedObjects",
+            vec![ExamplePairing::new(
+                "Return all the objects the address provided in the request owns. By default, only the digest value is returned. The request sets to true all the available information.",
+                vec![
+                    ("address", json!(owner)),
+                    ("query", json!(options)),
+                    ("cursor", json!(object_id)),
+                    ("limit", json!(3))
+                ],
+                json!(result)
+            )]
+        )
+    }
 }
+
+/* 
+"ObjectDataOptions": {
+        "type": "object",
+        "properties": {
+          "showBcs": {
+            "description": "Whether to show the content in BCS format. Default to be False",
+            "default": false,
+            "type": "boolean"
+          },
+          "showContent": {
+            "description": "Whether to show the content(i.e., package content or Move struct content) of the object. Default to be False",
+            "default": false,
+            "type": "boolean"
+          },
+          "showDisplay": {
+            "description": "Whether to show the Display metadata of the object for frontend rendering. Default to be False",
+            "default": false,
+            "type": "boolean"
+          },
+          "showOwner": {
+            "description": "Whether to show the owner of the object. Default to be False",
+            "default": false,
+            "type": "boolean"
+          },
+          "showPreviousTransaction": {
+            "description": "Whether to show the previous transaction digest of the object. Default to be False",
+            "default": false,
+            "type": "boolean"
+          },
+          "showStorageRebate": {
+            "description": "Whether to show the storage rebate of the object. Default to be False",
+            "default": false,
+            "type": "boolean"
+          },
+          "showType": {
+            "description": "Whether to show the type of the object. Default to be False",
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      },
+      */

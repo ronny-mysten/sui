@@ -1736,7 +1736,52 @@
         "schema": {
           "$ref": "#/components/schemas/SuiObjectResponse"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Get the information for the dynamic field the request provides.",
+          "params": [
+            {
+              "name": "parent_object_id",
+              "value": "0xd6e4c0ad5ec4de2449c41ac819f9c162d4af78db04f5789cd4fca497d9d14703"
+            },
+            {
+              "name": "name",
+              "value": {
+                "type": "address",
+                "value": "0x2fb30e765422178a6c146d85e49b53a4ac09b42e9036dd49b9c46a42692b1f20"
+              }
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "data": {
+                "objectId": "0x4b9e705b76b009e1106bcc707e0ac8ec44e6987ad6f133989e449fceea67b53a",
+                "version": "1",
+                "digest": "6wYAncei61SbsXjfJuREYWFJcwMvTt8vnZh7jECYgMu",
+                "type": "0x2::coin::Coin<0x2::sui::SUI>",
+                "owner": {
+                  "AddressOwner": "0x331a1215dc37be8298fa4ae3e9e1fa9a0599369c8ca7aba9305dc52596a59e5f"
+                },
+                "previousTransaction": "3FiwvBCr7vJUrSa1wDuapfczD218uxymBACSz625vojt",
+                "storageRebate": "100",
+                "content": {
+                  "dataType": "moveObject",
+                  "type": "0x2::coin::Coin<0x2::sui::SUI>",
+                  "hasPublicTransfer": true,
+                  "fields": {
+                    "balance": "10000",
+                    "id": {
+                      "id": "0x6b5ad50597c5faf4842f454b9b09c7524afb8e30e88e2f84077773b9572d766c"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     {
       "name": "suix_getDynamicFields",
@@ -1778,7 +1823,71 @@
         "schema": {
           "$ref": "#/components/schemas/Page_for_DynamicFieldInfo_and_ObjectID"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Get dynamic fields for the object the request provides. Return a paginated list of `limit` dynamic field results per page, beginning with the dynamic field immediately after the provided object ID.",
+          "params": [
+            {
+              "name": "parent_object_id",
+              "value": "0x115855b76f2b1195fd7c917731b91ef106228a6513fdeb28fa01435372e390a3"
+            },
+            {
+              "name": "cursor",
+              "value": "0x5098d0dd26843d6b086de1f2c19de85715234f745c64c1fb13f031035701326e"
+            },
+            {
+              "name": "limit",
+              "value": 3
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "data": [
+                {
+                  "name": {
+                    "type": "address",
+                    "value": "0xb1b6d79fbfa88548f44d295a385dc3544d211411b865e8bc4f01f49186970c7c"
+                  },
+                  "bcsName": "4Z",
+                  "type": "DynamicField",
+                  "objectType": "vector<0x2::object::ID>",
+                  "objectId": "0xf61e1cc829cc0be747dfa99496428c65b2054ad7db1872b87ff05b1047bb5e3a",
+                  "version": 3627646,
+                  "digest": "G2kjzCa3AwrFX6LWjx8nY77cveuM3BLgPhMpQaYuspyd"
+                },
+                {
+                  "name": {
+                    "type": "address",
+                    "value": "0x6661084cd6e8769f42ef9314ccc792dd4401a88e69c66b4c5e43f21e9e57f4ab"
+                  },
+                  "bcsName": "3i",
+                  "type": "DynamicField",
+                  "objectType": "vector<0x2::object::ID>",
+                  "objectId": "0xe3c702649d3a7dd0d4f062dbcfc3bf73f5861945592222ff7b090ac21c8a3cf8",
+                  "version": 3592441,
+                  "digest": "5MT64KUHvn3SLwcRxMJi8HbNppmo5oiP7YrMTpAmPPVK"
+                },
+                {
+                  "name": {
+                    "type": "address",
+                    "value": "0xac72d11c4dc40f1aee6b5173afedb35330f60397c2cbb48196ba41921246c304"
+                  },
+                  "bcsName": "r",
+                  "type": "DynamicField",
+                  "objectType": "vector<0x2::object::ID>",
+                  "objectId": "0xbe7b490cee0904ebe5c651321915b06c81838c2e370109b554a448a78d3a5622",
+                  "version": 4846517,
+                  "digest": "23QapaeCGCMRMBYhtzKyv7xK1ANCR4AahoudZy7Ubpwe"
+                }
+              ],
+              "nextCursor": "0xaeecce7c56488b137d42c99fc38511ba4813dc57feb3f00e898842487e23dbc2",
+              "hasNextPage": true
+            }
+          }
+        }
+      ]
     },
     {
       "name": "suix_getLatestSuiSystemState",
@@ -1844,7 +1953,65 @@
         "schema": {
           "$ref": "#/components/schemas/Page_for_SuiObjectResponse_and_ObjectID"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Return all the objects the address provided in the request owns. By default, only the digest value is returned. The request sets to true all the available information.",
+          "params": [
+            {
+              "name": "address",
+              "value": "0xaf0e2a36a2527e077b8067906d49321455646bccdd61abe786a0c55d327bb6ad"
+            },
+            {
+              "name": "query",
+              "value": {
+                "showType": true,
+                "showOwner": true,
+                "showPreviousTransaction": true,
+                "showDisplay": true,
+                "showContent": true,
+                "showBcs": true,
+                "showStorageRebate": false
+              }
+            },
+            {
+              "name": "cursor",
+              "value": "0xc726d01b1b749ec992e30e8e1dc5061bbf38c199f22627e75ff9bf8c469ff03d"
+            },
+            {
+              "name": "limit",
+              "value": 3
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "data": {
+                "objectId": "0xbf158911a8315deaa7da79ec316e3aadc27b6d21c2ff1c27d0c26c9c17438e86",
+                "version": "1",
+                "digest": "DXtGNkQ4PvmknJTELiHddXyWHXiAHhtrN9QSLqZDFz1K",
+                "type": "0x2::coin::Coin<0x2::sui::SUI>",
+                "owner": {
+                  "AddressOwner": "0x000b917ca77792c42209ab55b0202608150d2aaba7d0b2cc03df659954b577bd"
+                },
+                "previousTransaction": "7mhS7KyssCJDbMj2oEswdSjFZXN338zbx5PRqPD3RkUF",
+                "storageRebate": "100",
+                "content": {
+                  "dataType": "moveObject",
+                  "type": "0x2::coin::Coin<0x2::sui::SUI>",
+                  "hasPublicTransfer": true,
+                  "fields": {
+                    "balance": "10000",
+                    "id": {
+                      "id": "0xc726d01b1b749ec992e30e8e1dc5061bbf38c199f22627e75ff9bf8c469ff03d"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     {
       "name": "suix_getReferenceGasPrice",
