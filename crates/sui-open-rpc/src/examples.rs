@@ -26,7 +26,7 @@ use sui_json_rpc_types::{
     SuiTransactionBlockData, SuiTransactionBlockEffects, SuiTransactionBlockEffectsV1,
     SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
     SuiTransactionBlockResponseQuery, TransactionBlockBytes, TransactionBlocksPage,
-    TransferObjectParams, SuiCommittee, Coin, CoinPage, DynamicFieldPage,
+    TransferObjectParams, SuiCommittee, Coin, CoinPage, DynamicFieldPage, ObjectsPage,
 };
 use sui_open_rpc::ExamplePairing;
 use sui_types::base_types::random_object_ref;
@@ -934,49 +934,59 @@ impl RpcExampleProvider {
     fn suix_get_owned_objects(&mut self) -> Examples {
 
         let owner = SuiAddress::from(ObjectID::new(self.rng.gen()));
-        let object_id = ObjectID::new(self.rng.gen());
-        let coin = GasCoin::new(object_id, 10000);
+        let version: u64 = 13488;
         let options = Some(
             SuiObjectDataOptions::new()
-                .with_type()
-                .with_owner()
-                .with_previous_transaction()
-                .with_display()
-                .with_content()
-                .with_bcs()
+            .with_type()
+            .with_owner()
+            .with_previous_transaction()
         );
-        options.clone().unwrap().show_storage_rebate = true;
-
-        println!("{:?}", options);
-
-        let result = SuiObjectResponse::new_with_data(SuiObjectData {
-            content: Some(
-                SuiParsedData::try_from_object(
-                    coin.to_object(SequenceNumber::from_u64(1)),
-                    GasCoin::layout(),
+        let filter = Some(SuiObjectDataFilter::MatchAll(
+            vec![SuiObjectDataFilter::StructType(
+                    StructTag::from_str("0x2::coin::Coin<0x2::sui::SUI>").unwrap()
+                ),
+                SuiObjectDataFilter::AddressOwner(
+                    owner
+                ),
+                SuiObjectDataFilter::Version(
+                    version
                 )
-                .unwrap(),
-            ),
-            owner: Some(Owner::AddressOwner(SuiAddress::from(ObjectID::new(
-                self.rng.gen(),
-            )))),
-            previous_transaction: Some(TransactionDigest::new(self.rng.gen())),
-            storage_rebate: Some(100),
-            object_id: ObjectID::new(self.rng.gen()),
-            version: SequenceNumber::from_u64(1),
-            digest: ObjectDigest::new(self.rng.gen()),
-            type_: Some(ObjectType::Struct(MoveObjectType::gas_coin())),
-            bcs: None,
-            display: None,
+            ]
+        ));
+        let query = json!(SuiObjectResponseQuery {
+            filter,
+            options
         });
+        let object_id = ObjectID::new(self.rng.gen());
+        
+        let items = (0..3)
+            .map(|_| SuiObjectResponse::new_with_data(SuiObjectData {
+                content: None,
+                owner: Some(Owner::AddressOwner(owner)),
+                previous_transaction: Some(TransactionDigest::new(self.rng.gen())),
+                storage_rebate: Some(100),
+                object_id: ObjectID::new(self.rng.gen()),
+                version: SequenceNumber::from_u64(version),
+                digest: ObjectDigest::new(self.rng.gen()),
+                type_: Some(ObjectType::Struct(MoveObjectType::gas_coin())),
+                bcs: None,
+                display: None,
+            })).collect::<Vec<_>>();
+
+        let next_cursor = items.last().unwrap().object_id(); 
+        let result = ObjectsPage {
+            data: items,
+            next_cursor: Some(next_cursor.unwrap()),
+            has_next_page: true
+        }; 
 
         Examples::new(
             "suix_getOwnedObjects",
             vec![ExamplePairing::new(
-                "Return all the objects the address provided in the request owns. By default, only the digest value is returned. The request sets to true all the available information.",
+                "Return all the objects the address provided in the request owns and that match the filter. By default, only the digest value is returned, but the request returns additional information by setting the relevant keys to true. A cursor value is also provided, so the list of results begin after that value.",
                 vec![
                     ("address", json!(owner)),
-                    ("query", json!(options)),
+                    ("query", json!(query)),
                     ("cursor", json!(object_id)),
                     ("limit", json!(3))
                 ],
@@ -986,45 +996,3 @@ impl RpcExampleProvider {
     }
 }
 
-/* 
-"ObjectDataOptions": {
-        "type": "object",
-        "properties": {
-          "showBcs": {
-            "description": "Whether to show the content in BCS format. Default to be False",
-            "default": false,
-            "type": "boolean"
-          },
-          "showContent": {
-            "description": "Whether to show the content(i.e., package content or Move struct content) of the object. Default to be False",
-            "default": false,
-            "type": "boolean"
-          },
-          "showDisplay": {
-            "description": "Whether to show the Display metadata of the object for frontend rendering. Default to be False",
-            "default": false,
-            "type": "boolean"
-          },
-          "showOwner": {
-            "description": "Whether to show the owner of the object. Default to be False",
-            "default": false,
-            "type": "boolean"
-          },
-          "showPreviousTransaction": {
-            "description": "Whether to show the previous transaction digest of the object. Default to be False",
-            "default": false,
-            "type": "boolean"
-          },
-          "showStorageRebate": {
-            "description": "Whether to show the storage rebate of the object. Default to be False",
-            "default": false,
-            "type": "boolean"
-          },
-          "showType": {
-            "description": "Whether to show the type of the object. Default to be False",
-            "default": false,
-            "type": "boolean"
-          }
-        }
-      },
-      */

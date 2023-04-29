@@ -67,7 +67,7 @@ pub trait IndexerApi {
     #[subscription(name = "subscribeEvent", item = SuiEvent)]
     fn subscribe_event(
         &self,
-        /// the filter criteria of the event stream, see the [Sui docs](https://docs.sui.io/build/pubsub#event-filters) for detailed examples.
+        /// the filter criteria of the event stream, see the [Sui docs](https://docs.sui.io/build/event_api#event-filters) for detailed examples.
         filter: EventFilter,
     );
 
