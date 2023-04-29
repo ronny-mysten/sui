@@ -485,10 +485,10 @@ You can use `EventFilter` to filter the events included in your subscription to 
 | Filter | Description | Applicable to Event Type | JSON-RPC Parameter Example |
 | ------ | ----------- | ------------------------ | -------------------------- |
 | Package | Move package ID | MoveEvent<br/>Publish<br/>TransferObject<br/>DeleteObject<br/>NewObject | `{"Package":"<PACKAGE-ID>"}` |
-| Module | Move module name | MoveEvent<br/>TransferObject<br/>DeleteObject<br/>NewObject | `{"Module":"nft"}` |
+| MoveModule | Move module name | MoveEvent<br/>TransferObject<br/>DeleteObject<br/>NewObject | `{"MoveModule":"nft"}` |
 | MoveEventType  | Move event type defined in the move code | MoveEvent | `{"MoveEventType":"<PACKAGE-ID>::nft::MintNFTEvent"}`|
 | MoveEventField | Filter using the data fields in the move event object | MoveEvent | `{"MoveEventField":{ "path":"/name", "value":"NFT"}}` |
-| SenderAddress | Address that started the transaction | MoveEvent<br/>Publish<br/>TransferObject<br/>DeleteObject<br/>NewObject | `{"SenderAddress": "0x008e9c621f4fdb210b873aab59a1e5bf32ddb1d33ee85eb069b348c234465106"}` |
+| Sender | Address that started the transaction | MoveEvent<br/>Publish<br/>TransferObject<br/>DeleteObject<br/>NewObject | `{"Sender": "0x008e9c621f4fdb210b873aab59a1e5bf32ddb1d33ee85eb069b348c234465106"}` |
 | EventType | Type of event described in the [Events](#type-of-events) section | MoveEvent<br/>Publish<br/>TransferObject<br/>DeleteObject<br/>NewObject<br/>EpochChange<br/>Checkpoint | `{"EventType":"Publish"}` |
 | ObjectId | Object ID | TransferObject<br/>DeleteObject<br/>NewObject |    `{"ObjectId":"0x727b37454ab13d5c1dbb22e8741bff72b145d1e660f71b275c01f24e7860e5e5"}` |
 

@@ -994,5 +994,9 @@ impl RpcExampleProvider {
             )]
         )
     }
+
+    fn sui_placeholder(&mut self) -> Examples {
+
+    }
 }
 

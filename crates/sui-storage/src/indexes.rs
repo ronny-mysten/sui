@@ -148,7 +148,7 @@ pub struct IndexStoreTables {
     #[default_options_override_fn = "transactions_by_mutated_object_id_table_default_config"]
     transactions_by_mutated_object_id: DBMap<(ObjectID, TxSequenceNumber), TransactionDigest>,
 
-    /// Index from package id, module and function identifier to transactions that used that moce function call as input.
+    /// Index from package id, module and function identifier to transactions that used that move function call as input.
     #[default_options_override_fn = "transactions_by_move_function_table_default_config"]
     transactions_by_move_function:
         DBMap<(ObjectID, String, String, TxSequenceNumber), TransactionDigest>,
