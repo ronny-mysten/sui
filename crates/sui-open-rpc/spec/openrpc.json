@@ -609,7 +609,49 @@
         "schema": {
           "$ref": "#/components/schemas/LoadedChildObjectsResponse"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Get loaded child objects associated with the transaction the request provides.",
+          "params": [
+            {
+              "name": "digest",
+              "value": "7pi1dbwF2E4CZRnbia3zppKNCsXY6gqEQCUA7zCCdo1H"
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "loadedChildObjects": [
+                {
+                  "objectId": "0x51ebf714d6a33167f44e88d31323c206efc6f6beecf319500fa168a183ae34ac",
+                  "sequenceNumber": "3051575"
+                },
+                {
+                  "objectId": "0xbb98b7536dc35648dbd2f26f842daed7b9b0ff343ac8aaf3fda751c368574ea2",
+                  "sequenceNumber": "3051575"
+                },
+                {
+                  "objectId": "0xa0a7b108f5023b7356f2c6a4be6f058e267aae38e08260c7d519d8641897490c",
+                  "sequenceNumber": "2720399"
+                },
+                {
+                  "objectId": "0x9ca8b6a23efeb7298cf0a8d0b837b78749c2cfc711c42036cc6b76211639f360",
+                  "sequenceNumber": "3492393"
+                },
+                {
+                  "objectId": "0xf61f3a566963b3eac49fe3bb57d304a454ed2f4859b44f4e49180047d5fa0a82",
+                  "sequenceNumber": "4029047"
+                },
+                {
+                  "objectId": "0x3e7d0ff4d55c32b09995a0ae1eedfee9c7b1354e805ed10ee3d0800105867da4",
+                  "sequenceNumber": "4029047"
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "name": "sui_getMoveFunctionArgTypes",
@@ -651,7 +693,48 @@
             "$ref": "#/components/schemas/MoveFunctionArgType"
           }
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Return the argument types for the package and function the request provides.",
+          "params": [
+            {
+              "name": "package",
+              "value": "0x905a0f4d42c6ff39a78a6ba2b28f68a3299ec3417bbabc6717dcc95b9e341bc3"
+            },
+            {
+              "name": "module",
+              "value": "suifrens"
+            },
+            {
+              "name": "function",
+              "value": "mint"
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": [
+              {
+                "Object": "ByMutableReference"
+              },
+              "Pure",
+              "Pure",
+              {
+                "Object": "ByValue"
+              },
+              {
+                "Object": "ByImmutableReference"
+              },
+              {
+                "Object": "ByValue"
+              },
+              {
+                "Object": "ByMutableReference"
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "sui_getNormalizedMoveFunction",
@@ -690,7 +773,47 @@
         "schema": {
           "$ref": "#/components/schemas/SuiMoveNormalizedFunction"
         }
-      }
+      },
+      "examples": [
+        {
+          "name": "Return the structured representation of the function the request provides.",
+          "params": [
+            {
+              "name": "package",
+              "value": "0xaba1654bdbad707dcd773bd6309363447ef3fe58a960de92aa9377b3482580ee"
+            },
+            {
+              "name": "module_name",
+              "value": "moduleName"
+            },
+            {
+              "name": "function_name",
+              "value": "functionName"
+            }
+          ],
+          "result": {
+            "name": "Result",
+            "value": {
+              "visibility": "Public",
+              "isEntry": false,
+              "typeParameters": [
+                {
+                  "abilities": [
+                    "Store",
+                    "Key"
+                  ]
+                }
+              ],
+              "parameters": [
+                "U64"
+              ],
+              "return": [
+                "U64"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "name": "sui_getNormalizedMoveModule",
@@ -1850,11 +1973,11 @@
                     "type": "address",
                     "value": "0xb1b6d79fbfa88548f44d295a385dc3544d211411b865e8bc4f01f49186970c7c"
                   },
-                  "bcsName": "5M",
+                  "bcsName": "x",
                   "type": "DynamicField",
                   "objectType": "vector<0x2::object::ID>",
                   "objectId": "0xf61e1cc829cc0be747dfa99496428c65b2054ad7db1872b87ff05b1047bb5e3a",
-                  "version": 3683763,
+                  "version": 5274281,
                   "digest": "G2kjzCa3AwrFX6LWjx8nY77cveuM3BLgPhMpQaYuspyd"
                 },
                 {
@@ -1862,11 +1985,11 @@
                     "type": "address",
                     "value": "0x6661084cd6e8769f42ef9314ccc792dd4401a88e69c66b4c5e43f21e9e57f4ab"
                   },
-                  "bcsName": "3Q",
+                  "bcsName": "39",
                   "type": "DynamicField",
                   "objectType": "vector<0x2::object::ID>",
                   "objectId": "0xe3c702649d3a7dd0d4f062dbcfc3bf73f5861945592222ff7b090ac21c8a3cf8",
-                  "version": 3230082,
+                  "version": 4558463,
                   "digest": "5MT64KUHvn3SLwcRxMJi8HbNppmo5oiP7YrMTpAmPPVK"
                 },
                 {
@@ -1874,11 +1997,11 @@
                     "type": "address",
                     "value": "0xac72d11c4dc40f1aee6b5173afedb35330f60397c2cbb48196ba41921246c304"
                   },
-                  "bcsName": "4v",
+                  "bcsName": "5B",
                   "type": "DynamicField",
                   "objectType": "vector<0x2::object::ID>",
                   "objectId": "0xbe7b490cee0904ebe5c651321915b06c81838c2e370109b554a448a78d3a5622",
-                  "version": 5710152,
+                  "version": 2629852,
                   "digest": "23QapaeCGCMRMBYhtzKyv7xK1ANCR4AahoudZy7Ubpwe"
                 }
               ],
@@ -2407,7 +2530,7 @@
       "params": [
         {
           "name": "filter",
-          "description": "the filter criteria of the event stream, see the [Sui docs](https://docs.sui.io/build/pubsub#event-filters) for detailed examples.",
+          "description": "the filter criteria of the event stream, see the [Sui docs](https://docs.sui.io/build/event_api#event-filters) for detailed examples.",
           "required": true,
           "schema": {
             "$ref": "#/components/schemas/EventFilter"

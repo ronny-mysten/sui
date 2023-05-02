@@ -19,9 +19,9 @@ use sui_json::SuiJsonValue;
 use sui_json_rpc::error::Error;
 use sui_json_rpc_types::SuiTypeTag;
 use sui_json_rpc_types::{
-    Balance, Checkpoint, CheckpointId, CheckpointPage, EventPage, MoveCallParams, ObjectChange, OwnedObjectRef,
-    RPCTransactionRequestParams, SuiData, SuiEvent, SuiExecutionStatus, SuiObjectData,
-    SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectRef, SuiObjectResponse,
+    Balance, Checkpoint, CheckpointId, CheckpointPage, EventPage, MoveCallParams, MoveFunctionArgType, ObjectChange, ObjectValueKind::ByMutableReference, ObjectValueKind::ByImmutableReference, ObjectValueKind::ByValue, OwnedObjectRef,
+    RPCTransactionRequestParams, SuiData, SuiEvent, SuiExecutionStatus, SuiLoadedChildObject, SuiLoadedChildObjectsResponse, SuiMoveAbility, SuiMoveAbilitySet, 
+    SuiMoveNormalizedFunction, SuiMoveNormalizedType, SuiMoveVisibility, SuiObjectData, SuiObjectDataFilter, SuiObjectDataOptions, SuiObjectRef, SuiObjectResponse,
     SuiObjectResponseQuery, SuiParsedData, SuiPastObjectResponse, SuiTransactionBlock,
     SuiTransactionBlockData, SuiTransactionBlockEffects, SuiTransactionBlockEffectsV1,
     SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
@@ -114,6 +114,9 @@ impl RpcExampleProvider {
             self.suix_get_dynamic_fields(),
             self.suix_get_dynamic_field_object(),
             self.suix_get_owned_objects(),
+            self.sui_get_loaded_child_objects(),
+            self.sui_get_move_function_arg_types(),
+            self.sui_get_normalized_move_function(),
         ]
         .into_iter()
         .map(|example| (example.function_name, example.examples))
@@ -995,8 +998,86 @@ impl RpcExampleProvider {
         )
     }
 
-    fn sui_placeholder(&mut self) -> Examples {
+    fn sui_get_loaded_child_objects(&mut self) -> Examples {
 
+        let mut sequence = SequenceNumber::from_u64(self.rng.gen_range(24506..6450624));
+        let seqs = (0..6)
+            .map(|x| 
+                {
+                    if x % 2 == 0{
+                        sequence = SequenceNumber::from_u64(self.rng.gen_range(24506..6450624));
+                    } else if x % 3 == 0{
+                        sequence = SequenceNumber::from_u64(self.rng.gen_range(24506..6450624));
+                    }
+                    SuiLoadedChildObject::new(ObjectID::new(self.rng.gen()), sequence)
+                }
+            )
+            .collect::<Vec<_>>();
+        let result = { SuiLoadedChildObjectsResponse { loaded_child_objects: seqs }};
+
+
+        Examples::new(
+            "sui_getLoadedChildObjects",
+            vec![ExamplePairing::new(
+                "Get loaded child objects associated with the transaction the request provides.",
+                vec![("digest", json!(ObjectDigest::new(self.rng.gen())))],
+                json!(result)
+            )]
+        )
+    }
+
+    fn sui_get_move_function_arg_types(&mut self) -> Examples {
+
+        let result = vec![
+            MoveFunctionArgType::Object(ByMutableReference),
+            MoveFunctionArgType::Pure,
+            MoveFunctionArgType::Pure,
+            MoveFunctionArgType::Object(ByValue),
+            MoveFunctionArgType::Object(ByImmutableReference),
+            MoveFunctionArgType::Object(ByValue),
+            MoveFunctionArgType::Object(ByMutableReference),
+        ];
+
+        Examples::new(
+            "sui_getMoveFunctionArgTypes",
+            vec![ExamplePairing::new(
+                "Return the argument types for the package and function the request provides.",
+                vec![
+                    ("package", json!(ObjectID::new(self.rng.gen()))),
+                    ("module", json!("suifrens".to_string())),
+                    ("function", json!("mint".to_string())),
+                ],
+                json!(result)
+            )]
+        )
+    }
+
+    fn sui_get_normalized_move_function(&mut self) -> Examples {
+
+        let ability_set = SuiMoveAbilitySet {
+            abilities: vec![SuiMoveAbility::Store, SuiMoveAbility::Key]
+        };
+
+        let result = SuiMoveNormalizedFunction {
+            is_entry: false, 
+            type_parameters: vec![ability_set],
+            parameters: vec![SuiMoveNormalizedType::U64],
+            visibility: SuiMoveVisibility::Public,
+            return_: vec![SuiMoveNormalizedType::U64]
+        };
+
+        Examples::new(
+            "sui_getNormalizedMoveFunction",
+            vec![ExamplePairing::new(
+                "Return the structured representation of the function the request provides.",
+                vec![
+                    ("package", json!(ObjectID::new(self.rng.gen()))),
+                    ("module_name", json!("moduleName".to_string())),
+                    ("function_name", json!("functionName".to_string())),
+                ],
+                json!(result)
+            )]
+        )
     }
 }
 
