@@ -3,9 +3,18 @@
 use anyhow::anyhow;
 use bip32::DerivationPath;
 use clap::*;
-use fastcrypto::encoding::{decode_bytes_hex, Base64, Encoding};
+use fastcrypto::encoding::{decode_bytes_hex, Base64, Encoding, Hex};
 use fastcrypto::hash::HashFunction;
+use fastcrypto::hash::Sha256;
+use fastcrypto::secp256k1::recoverable::Secp256k1RecoverableSignature;
+use fastcrypto::secp256k1::recoverable::Secp256k1Sig;
+use fastcrypto::secp256k1::Secp256k1Signature;
 use fastcrypto::traits::KeyPair;
+use fastcrypto::traits::RecoverableSignature;
+use fastcrypto::traits::ToFromBytes;
+use fastcrypto::traits::VerifyingKey;
+use rusoto_core::Region;
+use rusoto_kms::{Kms, KmsClient, SignRequest};
 use shared_crypto::intent::{Intent, IntentMessage};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,10 +27,11 @@ use sui_keys::keystore::{AccountKeystore, Keystore};
 use sui_types::base_types::SuiAddress;
 use sui_types::crypto::{get_authority_key_pair, EncodeDecodeBase64, SignatureScheme, SuiKeyPair};
 use sui_types::crypto::{DefaultHash, PublicKey, Signature};
-use sui_types::messages::TransactionData;
 use sui_types::multisig::{MultiSig, MultiSigPublicKey, ThresholdUnit, WeightUnit};
 use sui_types::signature::GenericSignature;
+use sui_types::transaction::TransactionData;
 use tracing::info;
+
 #[cfg(test)]
 #[path = "unit_tests/keytool_tests.rs"]
 mod keytool_tests;
@@ -73,7 +83,22 @@ pub enum KeyToolCommand {
         #[clap(long)]
         intent: Option<Intent>,
     },
-    /// Add a new key to sui.key based on the input mnemonic phrase, the key scheme flag {ed25519 | secp256k1 | secp256r1}
+    /// Create signature using leveraging AWS KMS. Pass in a key-id to leverage Amazon
+    /// KMS to sign a message.
+    /// Any signature commits to a [struct IntentMessage] consisting of the Base64 encoded
+    /// of the BCS serialized transaction bytes itself (the result of
+    /// [transaction builder API](https://docs.sui.io/sui-jsonrpc) and its intent. If
+    /// intent is absent, default will be used. See [struct IntentMessage] and [struct Intent]
+    /// for more details.
+    SignKMS {
+        #[clap(long)]
+        data: String,
+        #[clap(long)]
+        keyid: String,
+        #[clap(long)]
+        intent: Option<Intent>,
+    },
+    /// Add a new key to sui.keystore based on the input mnemonic phrase, the key scheme flag {ed25519 | secp256k1 | secp256r1}
     /// and an optional derivation path, default to m/44'/784'/0'/0'/0' for ed25519 or m/54'/784'/0'/0/0 for secp256k1
     /// or m/74'/784'/0'/0/0 for secp256r1. Supports mnemonic phrase of word length 12, 15, 18`, 21, 24.
     Import {
@@ -81,6 +106,12 @@ pub enum KeyToolCommand {
         key_scheme: SignatureScheme,
         derivation_path: Option<DerivationPath>,
     },
+    /// Convert private key from wallet format (hex of 32 byte private key) to sui.keystore format
+    /// (base64 of 33 byte flag || private key) or vice versa.
+    Convert {
+        value: String,
+    },
+
     /// This reads the content at the provided file path. The accepted format can be
     /// [enum SuiKeyPair] (Base64 encoded of 33-byte `flag || privkey`) or `type AuthorityKeyPair`
     /// (Base64 encoded `privkey`). This prints out the account keypair as Base64 encoded `flag || privkey`,
@@ -117,10 +148,40 @@ pub enum KeyToolCommand {
         #[clap(long)]
         threshold: ThresholdUnit,
     },
+
+    /// Converts a Base64 encoded string to its hexadecimal representation.
+    Base64ToHex {
+        base64: String,
+    },
+
+    /// Converts a hexadecimal string to its Base64 encoded representation.
+    HexToBase64 {
+        hex: String,
+    },
+
+    /// Converts a hexadecimal string to its corresponding bytes.
+    HexToBytes {
+        hex: String,
+    },
+
+    /// Converts an array of bytes to its hexadecimal string representation.
+    BytesToHex {
+        bytes: Vec<u8>,
+    },
+
+    /// Decodes a Base64 encoded string to its corresponding bytes.
+    Base64ToBytes {
+        base64: String,
+    },
+
+    /// Encodes an array of bytes to its Base64 string representation.
+    BytesToBase64 {
+        bytes: Vec<u8>,
+    },
 }
 
 impl KeyToolCommand {
-    pub fn execute(self, keystore: &mut Keystore) -> Result<(), anyhow::Error> {
+    pub async fn execute(self, keystore: &mut Keystore) -> Result<(), anyhow::Error> {
         match self {
             KeyToolCommand::Generate {
                 key_scheme,
@@ -134,14 +195,15 @@ impl KeyToolCommand {
                     let file_name = format!("bls-{address}.key");
                     write_authority_keypair_to_file(&keypair, file_name)?;
                 } else {
-                    let (address, kp, scheme, _) =
+                    let (address, kp, scheme, phrase) =
                         generate_new_key(key_scheme, derivation_path, word_length)?;
                     let file = format!("{address}.key");
                     write_keypair_to_file(&kp, &file)?;
                     println!(
-                        "Keypair wrote to file path: {:?} with scheme: {:?}",
+                        "Created new keypair for address wrote to file path {:?} with scheme {:?}: [{address}]",
                         file, scheme
                     );
+                    println!("Secret Recovery Phrase : [{phrase}]");
                 }
             }
             KeyToolCommand::Show { file } => {
@@ -151,7 +213,7 @@ impl KeyToolCommand {
                         println!("Public Key: {}", keypair.public().encode_base64());
                         println!("Flag: {}", keypair.public().flag());
                         if let PublicKey::Ed25519(public_key) = keypair.public() {
-                            let peer_id = anemo::PeerId(public_key.0.into());
+                            let peer_id = anemo::PeerId(public_key.0);
                             println!("PeerId: {}", peer_id);
                         }
                     }
@@ -228,11 +290,69 @@ impl KeyToolCommand {
                 info!("Key imported for address [{address}]");
             }
 
+            KeyToolCommand::Convert { value } => match Base64::decode(&value) {
+                Ok(decoded) => {
+                    assert_eq!(decoded.len(), 33);
+                    info!(
+                        "Wallet formatted private key: 0x{}",
+                        Hex::encode(&decoded[1..])
+                    );
+                }
+                Err(_) => match Hex::decode(&value) {
+                    Ok(decoded) => {
+                        assert_eq!(decoded.len(), 32);
+                        let mut res = Vec::new();
+                        res.extend_from_slice(&[SignatureScheme::ED25519.flag()]);
+                        res.extend_from_slice(&decoded);
+                        info!("Keystore formatted private key: {:?}", Base64::encode(&res));
+                    }
+                    Err(_) => {
+                        info!("Invalid private key format");
+                    }
+                },
+            },
+
             KeyToolCommand::Base64PubKeyToAddress { base64_key } => {
                 let pk = PublicKey::decode_base64(&base64_key)
                     .map_err(|e| anyhow!("Invalid base64 key: {:?}", e))?;
                 let address = SuiAddress::from(&pk);
                 println!("Address {:?}", address);
+            }
+
+            KeyToolCommand::Base64ToHex { base64 } => {
+                let bytes =
+                    Base64::decode(&base64).map_err(|e| anyhow!("Invalid base64 key: {:?}", e))?;
+                let hex = Hex::from_bytes(&bytes);
+                println!("{:?}", hex);
+            }
+
+            KeyToolCommand::HexToBase64 { hex } => {
+                let bytes =
+                    Hex::decode(&hex).map_err(|e| anyhow!("Invalid base64 key: {:?}", e))?;
+                let base64 = Base64::from_bytes(&bytes);
+                println!("{:?}", base64);
+            }
+
+            KeyToolCommand::HexToBytes { hex } => {
+                let bytes =
+                    Hex::decode(&hex).map_err(|e| anyhow!("Invalid base64 key: {:?}", e))?;
+                println!("Bytes {:?}", bytes);
+            }
+
+            KeyToolCommand::BytesToHex { bytes } => {
+                let hex = Hex::from_bytes(&bytes);
+                println!("{:?}", hex);
+            }
+
+            KeyToolCommand::Base64ToBytes { base64 } => {
+                let bytes =
+                    Base64::decode(&base64).map_err(|e| anyhow!("Invalid base64 key: {:?}", e))?;
+                println!("Bytes {:?}", bytes);
+            }
+
+            KeyToolCommand::BytesToBase64 { bytes } => {
+                let base64 = Base64::from_bytes(&bytes);
+                println!("{:?}", base64);
             }
 
             KeyToolCommand::LoadKeypair { file } => {
@@ -256,6 +376,86 @@ impl KeyToolCommand {
                         }
                     }
                 }
+            }
+            KeyToolCommand::SignKMS {
+                data,
+                keyid,
+                intent,
+            } => {
+                // Currently only supports secp256k1 keys
+                println!("Raw tx_bytes to execute: {}", data);
+                let intent = intent.unwrap_or_else(Intent::sui_transaction);
+                println!("Intent: {:?}", intent);
+                let msg: TransactionData =
+                    bcs::from_bytes(&Base64::decode(&data).map_err(|e| {
+                        anyhow!("Cannot deserialize data as TransactionData {:?}", e)
+                    })?)?;
+                let intent_msg = IntentMessage::new(intent, msg);
+                println!(
+                    "Raw intent message: {:?}",
+                    Base64::encode(bcs::to_bytes(&intent_msg)?)
+                );
+                let mut hasher = DefaultHash::default();
+                hasher.update(bcs::to_bytes(&intent_msg)?);
+                let digest = hasher.finalize().digest;
+                println!("Digest to sign: {:?}", Base64::encode(digest));
+
+                // Set up the KMS client in default region.
+                let region: Region = Region::default();
+                let kms: KmsClient = KmsClient::new(region);
+
+                // Construct the signing request.
+                let request: SignRequest = SignRequest {
+                    key_id: keyid.to_string(),
+                    message: digest.to_vec().into(),
+                    message_type: Some("RAW".to_string()),
+                    signing_algorithm: "ECDSA_SHA_256".to_string(),
+                    ..Default::default()
+                };
+
+                // Sign the message, normalize the signature and then compacts it
+                // serialize_compact is loaded as bytes for Secp256k1Sinature
+                // to convert it into a RecoverableSignature
+                let response = kms.sign(request).await?;
+                let sig_bytes_der = response
+                    .signature
+                    .map(|b| b.to_vec())
+                    .expect("Requires Asymmetric Key Generated in KMS");
+
+                let mut external_sig = Secp256k1Sig::from_der(&sig_bytes_der)?;
+                external_sig.normalize_s();
+                let sig_compact = external_sig.serialize_compact();
+                let sig = Secp256k1Signature::from_bytes(&sig_compact)?;
+
+                // Covert a 64-byte signature to 65-byte signature recoverable signature.
+                // by trying all 4 possible recovery ids as the last byte. The first 64
+                // bytes are copied over.
+                let mut n_bytes: [u8; 65] = [0u8; 65];
+                n_bytes[..64].copy_from_slice(&sig_compact[..]);
+
+                for i in 0..4 {
+                    n_bytes[64] = i;
+                    let sig_r = Secp256k1RecoverableSignature::from_bytes(&n_bytes)?;
+                    let pk = sig_r.recover_with_hash::<Sha256>(digest.as_ref())?;
+
+                    // If the recovered pk is valid, output serialized signature.
+                    if pk.verify(digest.as_ref(), &sig).is_ok() {
+                        println!(
+                            "Address For Corresponding KMS Key: {}",
+                            Into::<SuiAddress>::into(&pk),
+                        );
+                        let mut serialized_sig = vec![SignatureScheme::Secp256k1.flag()];
+                        serialized_sig.extend_from_slice(&sig_compact);
+                        serialized_sig.extend_from_slice(pk.as_ref());
+                        let serialized_sig = Base64::encode(&serialized_sig);
+                        println!(
+                            "Serialized signature (`flag || sig || pk` in Base64): {:?}",
+                            serialized_sig
+                        );
+                        return Ok(());
+                    }
+                }
+                println!("Invalid signature to recover secp256k1 public key");
             }
             KeyToolCommand::MultiSigAddress {
                 threshold,

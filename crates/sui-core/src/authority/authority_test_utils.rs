@@ -9,12 +9,13 @@ use move_core_types::account_address::AccountAddress;
 use move_symbol_pool::Symbol;
 use sui_move_build::{BuildConfig, CompiledPackage};
 use sui_types::crypto::Signature;
+use sui_types::messages_consensus::ConsensusTransaction;
 use sui_types::move_package::UpgradePolicy;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use sui_types::utils::to_sender_signed_transaction;
 use sui_types::{
     crypto::{AccountKeyPair, AuthorityKeyPair, KeypairTraits},
-    messages::VerifiedTransaction,
+    transaction::VerifiedTransaction,
 };
 
 use super::test_authority_builder::TestAuthorityBuilder;
@@ -408,8 +409,12 @@ pub async fn upgrade_package_on_single_authority(
 ) -> SuiResult<ObjectID> {
     let package = build_test_modules_with_dep_addr(path, dep_original_addresses, dep_id_mapping);
 
-    let modules = package.get_package_bytes(false);
-    let digest = package.get_package_digest(false).to_vec();
+    let with_unpublished_deps = false;
+    let hash_modules = true;
+    let modules = package.get_package_bytes(with_unpublished_deps);
+    let digest = package
+        .get_package_digest(with_unpublished_deps, hash_modules)
+        .to_vec();
 
     let rgp = state.epoch_store_for_testing().reference_gas_price();
     let data = TransactionData::new_upgrade(

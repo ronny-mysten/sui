@@ -27,14 +27,15 @@ use sui_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
 use sui_swarm::memory::Swarm;
 use sui_types::crypto::{SignatureScheme, SuiKeyPair};
 
-use crate::client_commands::{SuiClientCommands, WalletContext};
-use crate::config::{SuiClientConfig, SuiEnv};
+use crate::client_commands::SuiClientCommands;
 use crate::console::start_console;
 use crate::fire_drill::{run_fire_drill, FireDrill};
 use crate::genesis_ceremony::{run, Ceremony};
 use crate::keytool::KeyToolCommand;
 use crate::validator_commands::SuiValidatorCommand;
 use sui_move::{self, execute_move_command};
+use sui_sdk::sui_client_config::{SuiClientConfig, SuiEnv};
+use sui_sdk::wallet_context::WalletContext;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Parser)]
@@ -251,12 +252,12 @@ impl SuiCommand {
                 let keystore_path =
                     keystore_path.unwrap_or(sui_config_dir()?.join(SUI_KEYSTORE_FILENAME));
                 let mut keystore = Keystore::from(FileBasedKeystore::new(&keystore_path)?);
-                cmd.execute(&mut keystore)
+                cmd.execute(&mut keystore).await
             }
             SuiCommand::Console { config } => {
                 let config = config.unwrap_or(sui_config_dir()?.join(SUI_CLIENT_CONFIG));
                 prompt_if_no_config(&config, false).await?;
-                let context = WalletContext::new(&config, None).await?;
+                let context = WalletContext::new(&config, None, None).await?;
                 start_console(context, &mut stdout(), &mut stderr()).await
             }
             SuiCommand::Client {
@@ -267,7 +268,7 @@ impl SuiCommand {
             } => {
                 let config_path = config.unwrap_or(sui_config_dir()?.join(SUI_CLIENT_CONFIG));
                 prompt_if_no_config(&config_path, accept_defaults).await?;
-                let mut context = WalletContext::new(&config_path, None).await?;
+                let mut context = WalletContext::new(&config_path, None, None).await?;
                 if let Some(cmd) = cmd {
                     cmd.execute(&mut context).await?.print(!json);
                 } else {
@@ -286,7 +287,7 @@ impl SuiCommand {
             } => {
                 let config_path = config.unwrap_or(sui_config_dir()?.join(SUI_CLIENT_CONFIG));
                 prompt_if_no_config(&config_path, accept_defaults).await?;
-                let mut context = WalletContext::new(&config_path, None).await?;
+                let mut context = WalletContext::new(&config_path, None, None).await?;
                 if let Some(cmd) = cmd {
                     cmd.execute(&mut context).await?.print(!json);
                 } else {

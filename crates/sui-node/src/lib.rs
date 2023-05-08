@@ -18,11 +18,13 @@ use anyhow::anyhow;
 use anyhow::Result;
 use arc_swap::ArcSwap;
 use futures::TryFutureExt;
+use mysten_common::sync::async_once_cell::AsyncOnceCell;
 use prometheus::Registry;
 use sui_core::consensus_adapter::LazyNarwhalClient;
 use sui_json_rpc::api::JsonRpcMetrics;
 use sui_types::sui_system_state::SuiSystemState;
 use tap::tap::TapFallible;
+use tokio::runtime::Handle;
 use tokio::sync::broadcast;
 use tokio::sync::oneshot;
 use tokio::sync::{watch, Mutex};
@@ -38,6 +40,7 @@ use mysten_network::server::ServerBuilder;
 use narwhal_network::metrics::MetricsMakeCallbackHandler;
 use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
 use sui_config::node::DBCheckpointConfig;
+use sui_config::node_config_metrics::NodeConfigMetrics;
 use sui_config::{ConsensusConfig, NodeConfig};
 use sui_core::authority::authority_per_epoch_store::AuthorityPerEpochStore;
 use sui_core::authority::epoch_start_configuration::EpochStartConfigTrait;
@@ -88,7 +91,7 @@ use sui_types::base_types::{AuthorityName, EpochId, TransactionDigest};
 use sui_types::committee::Committee;
 use sui_types::crypto::KeypairTraits;
 use sui_types::error::{SuiError, SuiResult};
-use sui_types::messages::{AuthorityCapabilities, ConsensusTransaction};
+use sui_types::messages_consensus::{AuthorityCapabilities, ConsensusTransaction};
 use sui_types::quorum_driver_types::QuorumDriverEffectsQueueResult;
 use sui_types::sui_system_state::epoch_start_sui_system_state::EpochStartSystemState;
 use sui_types::sui_system_state::epoch_start_sui_system_state::EpochStartSystemStateTrait;
@@ -156,17 +159,27 @@ impl SuiNode {
     pub async fn start(
         config: &NodeConfig,
         registry_service: RegistryService,
+        custom_rpc_runtime: Option<Handle>,
     ) -> Result<Arc<SuiNode>> {
-        let (sender, receiver) = oneshot::channel();
-        Self::start_async(config, registry_service, sender).await?;
-        Ok(receiver.await?)
+        let node_one_cell = Arc::new(AsyncOnceCell::<Arc<SuiNode>>::new());
+        Self::start_async(
+            config,
+            registry_service,
+            node_one_cell.clone(),
+            custom_rpc_runtime,
+        )
+        .await?;
+        Ok(node_one_cell.get().await)
     }
 
     pub async fn start_async(
         config: &NodeConfig,
         registry_service: RegistryService,
-        node_sender: oneshot::Sender<Arc<SuiNode>>,
+        node_once_cell: Arc<AsyncOnceCell<Arc<SuiNode>>>,
+        custom_rpc_runtime: Option<Handle>,
     ) -> Result<()> {
+        NodeConfigMetrics::new(&registry_service.default_registry()).record_metrics(config);
+
         let mut config = config.clone();
         if config.supported_protocol_versions.is_none() {
             info!(
@@ -263,6 +276,9 @@ impl SuiNode {
             Some(Arc::new(IndexStore::new(
                 config.db_path().join("indexes"),
                 &prometheus_registry,
+                epoch_store
+                    .protocol_config()
+                    .max_move_identifier_len_as_option(),
             )))
         } else {
             None
@@ -301,8 +317,17 @@ impl SuiNode {
             .as_ref()
             .zip(db_checkpoint_config.object_store_config.as_ref())
         {
-            Some((path, config)) => {
-                let handler = DBCheckpointHandler::new(path, config, 60)?;
+            Some((path, object_store_config)) => {
+                let handler = DBCheckpointHandler::new(
+                    path,
+                    object_store_config,
+                    60,
+                    db_checkpoint_config
+                        .prune_and_compact_before_upload
+                        .unwrap_or(true),
+                    config.indirect_objects_threshold,
+                    config.authority_store_pruning_config,
+                )?;
                 Some(handler.start())
             }
             None => None,
@@ -323,18 +348,21 @@ impl SuiNode {
             &db_checkpoint_config,
             config.expensive_safety_check_config.clone(),
             config.transaction_deny_config.clone(),
+            config.certificate_deny_config.clone(),
+            config.indirect_objects_threshold,
         )
         .await;
         // ensure genesis txn was executed
         if epoch_store.epoch() == 0 {
             let txn = &genesis.transaction();
             let span = error_span!("genesis_txn", tx_digest = ?txn.digest());
-            let transaction = sui_types::messages::VerifiedExecutableTransaction::new_unchecked(
-                sui_types::messages::ExecutableTransaction::new_from_data_and_sig(
-                    genesis.transaction().data().clone(),
-                    sui_types::certificate_proof::CertificateProof::Checkpoint(0, 0),
-                ),
-            );
+            let transaction =
+                sui_types::executable_transaction::VerifiedExecutableTransaction::new_unchecked(
+                    sui_types::executable_transaction::ExecutableTransaction::new_from_data_and_sig(
+                        genesis.transaction().data().clone(),
+                        sui_types::executable_transaction::CertificateProof::Checkpoint(0, 0),
+                    ),
+                );
             state
                 .try_execute_immediately(&transaction, None, &epoch_store)
                 .instrument(span)
@@ -364,6 +392,7 @@ impl SuiNode {
             &transaction_orchestrator.clone(),
             &config,
             &prometheus_registry,
+            custom_rpc_runtime,
         )
         .await?;
 
@@ -447,9 +476,9 @@ impl SuiNode {
         let node_copy = node.clone();
         spawn_monitored_task!(async move { Self::monitor_reconfiguration(node_copy).await });
 
-        node_sender
-            .send(node)
-            .map_err(|_e| anyhow!("Failed to send node"))?;
+        node_once_cell
+            .set(node)
+            .expect("Failed to set Arc<Node> in node_once_cell");
         Ok(())
     }
 
@@ -812,6 +841,8 @@ impl SuiNode {
             Box::new(connection_monitor_status),
             consensus_config.max_pending_transactions(),
             consensus_config.max_pending_transactions() * 2 / committee.num_members(),
+            consensus_config.max_submit_position,
+            consensus_config.submit_delay_step_override(),
             ca_metrics,
         )
     }
@@ -910,9 +941,9 @@ impl SuiNode {
                 // TODO: without this sleep, the consensus message is not delivered reliably.
                 tokio::time::sleep(Duration::from_millis(1)).await;
 
-                let max_binary_format_version = cur_epoch_store
-                    .protocol_config()
-                    .move_binary_format_version();
+                let config = cur_epoch_store.protocol_config();
+                let max_binary_format_version = config.move_binary_format_version();
+                let no_extraneous_module_bytes = config.no_extraneous_module_bytes();
                 let transaction =
                     ConsensusTransaction::new_capability_notification(AuthorityCapabilities::new(
                         self.state.name,
@@ -920,7 +951,10 @@ impl SuiNode {
                             .supported_protocol_versions
                             .expect("Supported versions should be populated"),
                         self.state
-                            .get_available_system_packages(max_binary_format_version)
+                            .get_available_system_packages(
+                                max_binary_format_version,
+                                no_extraneous_module_bytes,
+                            )
                             .await,
                     ));
                 info!(?transaction, "submitting capabilities to consensus");
@@ -1141,6 +1175,7 @@ pub async fn build_server(
     transaction_orchestrator: &Option<Arc<TransactiondOrchestrator<NetworkAuthorityClient>>>,
     config: &NodeConfig,
     prometheus_registry: &Registry,
+    custom_runtime: Option<Handle>,
 ) -> Result<Option<ServerHandle>> {
     // Validators do not expose these APIs
     if config.consensus_config().is_some() {
@@ -1170,7 +1205,9 @@ pub async fn build_server(
     ))?;
     server.register_module(MoveUtils::new(state.clone()))?;
 
-    let rpc_server_handle = server.start(config.json_rpc_address).await?;
+    let rpc_server_handle = server
+        .start(config.json_rpc_address, custom_runtime)
+        .await?;
 
     Ok(Some(rpc_server_handle))
 }

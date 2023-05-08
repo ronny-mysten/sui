@@ -18,11 +18,11 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use sui::client_commands::WalletContext;
 use sui_config::{sui_config_dir, SUI_CLIENT_CONFIG};
 use sui_faucet::{
     Faucet, FaucetConfig, FaucetRequest, FaucetResponse, RequestMetricsLayer, SimpleFaucet,
 };
+use sui_sdk::wallet_context::WalletContext;
 use tower::{limit::RateLimitLayer, ServiceBuilder};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, warn};
@@ -173,7 +173,12 @@ async fn request_gas(
 async fn create_wallet_context(timeout_secs: u64) -> Result<WalletContext, anyhow::Error> {
     let wallet_conf = sui_config_dir()?.join(SUI_CLIENT_CONFIG);
     info!("Initialize wallet from config path: {:?}", wallet_conf);
-    WalletContext::new(&wallet_conf, Some(Duration::from_secs(timeout_secs))).await
+    WalletContext::new(
+        &wallet_conf,
+        Some(Duration::from_secs(timeout_secs)),
+        Some(1000),
+    )
+    .await
 }
 
 async fn handle_error(error: BoxError) -> impl IntoResponse {

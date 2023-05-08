@@ -10,7 +10,7 @@ use proptest::collection::vec;
 use sui_types::base_types::{ObjectID, ObjectRef, SequenceNumber, SuiAddress};
 
 use sui_types::digests::ObjectDigest;
-use sui_types::messages::{
+use sui_types::transaction::{
     GasData, TransactionData, TransactionDataV1, TransactionExpiration, TransactionKind,
 };
 
@@ -60,7 +60,9 @@ pub fn gen_gas_data(sender: SuiAddress) -> impl Strategy<Value = GasData> {
 }
 
 pub fn gen_transaction_kind() -> impl Strategy<Value = TransactionKind> {
-    (vec(gen_type_tag(), 0..10)).prop_map(pt_for_tags)
+    (vec(gen_type_tag(), 0..10))
+        .prop_map(pt_for_tags)
+        .prop_map(TransactionKind::ProgrammableTransaction)
 }
 
 pub fn transaction_data_gen(sender: SuiAddress) -> impl Strategy<Value = TransactionData> {

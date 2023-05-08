@@ -18,23 +18,24 @@ use sui_json_rpc::api::GovernanceReadApiClient;
 use sui_json_rpc::api::{
     CoinReadApiClient, IndexerApiClient, MoveUtilsClient, ReadApiClient, WriteApiClient,
 };
-use sui_json_rpc_types::SuiLoadedChildObjectsResponse;
 use sui_json_rpc_types::{
     Balance, Checkpoint, CheckpointId, Coin, CoinPage, DelegatedStake,
     DryRunTransactionBlockResponse, DynamicFieldPage, EventFilter, EventPage, ObjectsPage,
-    SuiCoinMetadata, SuiCommittee, SuiEvent, SuiGetPastObjectRequest, SuiMoveNormalizedModule,
-    SuiObjectDataOptions, SuiObjectResponse, SuiObjectResponseQuery, SuiPastObjectResponse,
-    SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
-    SuiTransactionBlockResponseQuery, TransactionBlocksPage,
+    ProtocolConfigResponse, SuiCoinMetadata, SuiCommittee, SuiEvent, SuiGetPastObjectRequest,
+    SuiMoveNormalizedModule, SuiObjectDataOptions, SuiObjectResponse, SuiObjectResponseQuery,
+    SuiPastObjectResponse, SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse,
+    SuiTransactionBlockResponseOptions, SuiTransactionBlockResponseQuery, TransactionBlocksPage,
 };
+use sui_json_rpc_types::{CheckpointPage, SuiLoadedChildObjectsResponse};
 use sui_types::balance::Supply;
 use sui_types::base_types::{ObjectID, SequenceNumber, SuiAddress, TransactionDigest};
 use sui_types::error::TRANSACTION_NOT_FOUND_MSG_PREFIX;
 use sui_types::event::EventID;
-use sui_types::messages::{ExecuteTransactionRequestType, TransactionData, VerifiedTransaction};
 use sui_types::messages_checkpoint::CheckpointSequenceNumber;
+use sui_types::quorum_driver_types::ExecuteTransactionRequestType;
 use sui_types::sui_serde::BigInt;
 use sui_types::sui_system_state::sui_system_state_summary::SuiSystemStateSummary;
+use sui_types::transaction::{TransactionData, VerifiedTransaction};
 
 #[derive(Debug)]
 pub struct ReadApi {
@@ -172,6 +173,20 @@ impl ReadApi {
         Ok(self.api.http.get_checkpoint(id).await?)
     }
 
+    /// Return paginated list of checkpoints
+    pub async fn get_checkpoints(
+        &self,
+        cursor: Option<BigInt<u64>>,
+        limit: Option<usize>,
+        descending_order: bool,
+    ) -> SuiRpcResult<CheckpointPage> {
+        Ok(self
+            .api
+            .http
+            .get_checkpoints(cursor, limit, descending_order)
+            .await?)
+    }
+
     /// Return the sequence number of the latest checkpoint that has been executed
     pub async fn get_latest_checkpoint_sequence_number(
         &self,
@@ -247,6 +262,13 @@ impl ReadApi {
         digest: TransactionDigest,
     ) -> SuiRpcResult<SuiLoadedChildObjectsResponse> {
         Ok(self.api.http.get_loaded_child_objects(digest).await?)
+    }
+
+    pub async fn get_protocol_config(
+        &self,
+        version: Option<BigInt<u64>>,
+    ) -> SuiRpcResult<ProtocolConfigResponse> {
+        Ok(self.api.http.get_protocol_config(version).await?)
     }
 }
 

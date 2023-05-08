@@ -6,7 +6,6 @@ use serde_json::json;
 use shared_crypto::intent::Intent;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use sui::client_commands::WalletContext;
 use sui::client_commands::{SuiClientCommandResult, SuiClientCommands};
 use sui_core::authority_client::AuthorityAPI;
 pub use sui_core::test_utils::{
@@ -20,35 +19,35 @@ use sui_json_rpc_types::{
 };
 use sui_keys::keystore::AccountKeystore;
 use sui_sdk::json::SuiJsonValue;
+use sui_sdk::wallet_context::WalletContext;
 use sui_types::base_types::ObjectRef;
 use sui_types::base_types::{ObjectID, SuiAddress, TransactionDigest};
 use sui_types::committee::Committee;
 use sui_types::crypto::{deterministic_random_account_key, AuthorityKeyPair};
 use sui_types::error::SuiResult;
 use sui_types::message_envelope::Message;
-use sui_types::messages::TEST_ONLY_GAS_UNIT_FOR_GENERIC;
-use sui_types::messages::TEST_ONLY_GAS_UNIT_FOR_PUBLISH;
-use sui_types::messages::TEST_ONLY_GAS_UNIT_FOR_SPLIT_COIN;
-use sui_types::messages::TEST_ONLY_GAS_UNIT_FOR_TRANSFER;
+use sui_types::transaction::TEST_ONLY_GAS_UNIT_FOR_PUBLISH;
+use sui_types::transaction::TEST_ONLY_GAS_UNIT_FOR_SPLIT_COIN;
+use sui_types::transaction::TEST_ONLY_GAS_UNIT_FOR_TRANSFER;
+use sui_types::transaction::{CertifiedTransaction, TEST_ONLY_GAS_UNIT_FOR_GENERIC};
 
-use sui_types::messages::{
-    CallArg, ObjectArg, ObjectInfoRequest, ObjectInfoResponse, Transaction, TransactionData,
-    TransactionEffects, TransactionEffectsAPI, TransactionEvents, VerifiedTransaction,
+use sui_test_transaction_builder::TestTransactionBuilder;
+use sui_types::effects::{TransactionEffects, TransactionEffectsAPI, TransactionEvents};
+use sui_types::messages_grpc::{
+    HandleCertificateResponseV2, ObjectInfoRequest, ObjectInfoResponse,
 };
-use sui_types::messages::{ExecuteTransactionRequestType, HandleCertificateResponse};
 use sui_types::move_package::UpgradePolicy;
 use sui_types::multiaddr::Multiaddr;
 use sui_types::object::{Object, Owner};
+use sui_types::quorum_driver_types::ExecuteTransactionRequestType;
+use sui_types::transaction::{
+    CallArg, ObjectArg, Transaction, TransactionData, VerifiedTransaction,
+};
 use sui_types::SUI_FRAMEWORK_ADDRESS;
 use sui_types::SUI_FRAMEWORK_OBJECT_ID;
 use tracing::{debug, info};
 
 use crate::authority::get_client;
-use crate::messages::{
-    create_publish_move_package_transaction, get_account_and_gas_coins,
-    get_gas_object_with_wallet_context, make_tx_certs_and_signed_effects,
-    make_tx_certs_and_signed_effects_with_committee,
-};
 
 pub fn make_publish_package(
     gas_object: ObjectRef,
@@ -56,14 +55,9 @@ pub fn make_publish_package(
     gas_price: u64,
 ) -> VerifiedTransaction {
     let (sender, keypair) = deterministic_random_account_key();
-    create_publish_move_package_transaction(
-        gas_object,
-        path,
-        sender,
-        &keypair,
-        gas_price * TEST_ONLY_GAS_UNIT_FOR_PUBLISH,
-        gas_price,
-    )
+    TestTransactionBuilder::new(sender, gas_object, gas_price)
+        .publish(path)
+        .build_and_sign(&keypair)
 }
 
 pub async fn publish_package(
@@ -72,7 +66,7 @@ pub async fn publish_package(
     net_addresses: &[Multiaddr],
     gas_price: u64,
 ) -> ObjectRef {
-    let (effects, _) =
+    let (effects, _, _) =
         publish_package_for_effects(gas_object, path, net_addresses, gas_price).await;
     parse_package_ref(effects.created()).unwrap()
 }
@@ -82,7 +76,7 @@ pub async fn publish_package_for_effects(
     path: PathBuf,
     net_addresses: &[Multiaddr],
     gas_price: u64,
-) -> (TransactionEffects, TransactionEvents) {
+) -> (TransactionEffects, TransactionEvents, Vec<Object>) {
     submit_single_owner_transaction(
         make_publish_package(gas_object.compute_object_reference(), path, gas_price),
         net_addresses,
@@ -389,8 +383,7 @@ pub async fn create_devnet_nft(
     context: &mut WalletContext,
     nfts_package: ObjectID,
 ) -> Result<(SuiAddress, ObjectID, TransactionDigest), anyhow::Error> {
-    let (sender, gas_objects) = get_account_and_gas_coins(context).await?.swap_remove(0);
-    let gas_object = gas_objects.get(0).unwrap().id();
+    let (sender, gas_object) = context.get_one_gas_object().await?.unwrap();
     let gas_price = context.get_reference_gas_price().await?;
 
     let args_json = json!([
@@ -409,9 +402,10 @@ pub async fn create_devnet_nft(
         function: "mint".into(),
         type_args: vec![],
         args,
-        gas: Some(*gas_object),
+        gas: Some(gas_object.0),
         gas_budget: TEST_ONLY_GAS_UNIT_FOR_GENERIC * gas_price,
-        serialize_output: false,
+        serialize_unsigned_transaction: false,
+        serialize_signed_transaction: false,
     }
     .execute(context)
     .await?;
@@ -450,8 +444,10 @@ pub async fn transfer_sui(
         None => context.config.keystore.addresses().get(1).cloned().unwrap(),
         Some(addr) => addr,
     };
-    let gas_ref = get_gas_object_with_wallet_context(context, &sender)
+    let gas_ref = context
+        .get_one_gas_object_owned_by_address(sender)
         .await
+        .unwrap()
         .unwrap();
 
     let res = SuiClientCommands::TransferSui {
@@ -459,7 +455,8 @@ pub async fn transfer_sui(
         amount: None,
         sui_coin_object_id: gas_ref.0,
         gas_budget: TEST_ONLY_GAS_UNIT_FOR_TRANSFER * gas_price,
-        serialize_output: false,
+        serialize_unsigned_transaction: false,
+        serialize_signed_transaction: false,
     }
     .execute(context)
     .await?;
@@ -531,12 +528,13 @@ pub async fn transfer_coin(
         object_id: object_to_send,
         gas: None,
         gas_budget: TEST_ONLY_GAS_UNIT_FOR_TRANSFER * gas_price,
-        serialize_output: false,
+        serialize_unsigned_transaction: false,
+        serialize_signed_transaction: false,
     }
     .execute(context)
     .await?;
 
-    let (digest, gas, gas_used) = if let SuiClientCommandResult::Transfer(_, response) = res {
+    let (digest, gas, gas_used) = if let SuiClientCommandResult::Transfer(response) = res {
         let effects = response.effects.unwrap();
         assert!(effects.status().is_ok());
         let gas_used = effects.gas_cost_summary();
@@ -573,7 +571,8 @@ pub async fn split_coin_with_wallet_context(context: &mut WalletContext, coin_id
         count: Some(2),
         gas: None,
         gas_budget: TEST_ONLY_GAS_UNIT_FOR_SPLIT_COIN * gas_price,
-        serialize_output: false,
+        serialize_unsigned_transaction: false,
+        serialize_signed_transaction: false,
     }
     .execute(context)
     .await
@@ -586,8 +585,10 @@ pub async fn delete_devnet_nft(
     nfts_package: ObjectID,
     nft_to_delete: ObjectRef,
 ) -> SuiTransactionBlockResponse {
-    let gas = get_gas_object_with_wallet_context(context, sender)
+    let gas = context
+        .get_one_gas_object_owned_by_address(*sender)
         .await
+        .unwrap()
         .unwrap_or_else(|| panic!("Expect {sender} to have at least one gas object"));
     let rgp = context.get_reference_gas_price().await.unwrap();
     let data = TransactionData::new_move_call(
@@ -631,16 +632,20 @@ pub async fn delete_devnet_nft(
 pub async fn submit_single_owner_transaction(
     transaction: VerifiedTransaction,
     net_addresses: &[Multiaddr],
-) -> (TransactionEffects, TransactionEvents) {
-    let certificate = make_tx_certs_and_signed_effects(vec![transaction])
-        .0
-        .pop()
-        .unwrap();
+) -> (TransactionEffects, TransactionEvents, Vec<Object>) {
+    let (committee, key_pairs) = Committee::new_simple_test_committee();
+    let certificate = CertifiedTransaction::new_from_keypairs_for_testing(
+        transaction.into_message(),
+        &key_pairs,
+        &committee,
+    )
+    .verify(&committee)
+    .unwrap();
     let mut responses = Vec::new();
     for addr in net_addresses {
         let client = get_client(addr);
         let reply = client
-            .handle_certificate(certificate.clone().into())
+            .handle_certificate_v2(certificate.clone().into())
             .await
             .unwrap();
         responses.push(reply);
@@ -654,7 +659,7 @@ pub async fn submit_single_owner_transaction(
 pub async fn submit_shared_object_transaction(
     transaction: VerifiedTransaction,
     net_addresses: &[Multiaddr],
-) -> SuiResult<(TransactionEffects, TransactionEvents)> {
+) -> SuiResult<(TransactionEffects, TransactionEvents, Vec<Object>)> {
     let (committee, key_pairs) = Committee::new_simple_test_committee();
     submit_shared_object_transaction_with_committee(
         transaction,
@@ -673,12 +678,14 @@ pub async fn submit_shared_object_transaction_with_committee(
     net_addresses: &[Multiaddr],
     committee: &Committee,
     key_pairs: &[AuthorityKeyPair],
-) -> SuiResult<(TransactionEffects, TransactionEvents)> {
-    let certificate =
-        make_tx_certs_and_signed_effects_with_committee(vec![transaction], committee, key_pairs)
-            .0
-            .pop()
-            .unwrap();
+) -> SuiResult<(TransactionEffects, TransactionEvents, Vec<Object>)> {
+    let certificate = CertifiedTransaction::new_from_keypairs_for_testing(
+        transaction.into_message(),
+        key_pairs,
+        committee,
+    )
+    .verify(committee)
+    .unwrap();
 
     let replies = loop {
         let futures: Vec<_> = net_addresses
@@ -686,7 +693,7 @@ pub async fn submit_shared_object_transaction_with_committee(
             .map(|addr| {
                 let client = get_client(addr);
                 let cert = certificate.clone();
-                async move { client.handle_certificate(cert.into()).await }
+                async move { client.handle_certificate_v2(cert.into()).await }
             })
             .collect();
 
@@ -712,20 +719,24 @@ pub async fn submit_shared_object_transaction_with_committee(
 }
 
 pub fn get_unique_effects(
-    replies: Vec<HandleCertificateResponse>,
-) -> (TransactionEffects, TransactionEvents) {
+    replies: Vec<HandleCertificateResponseV2>,
+) -> (TransactionEffects, TransactionEvents, Vec<Object>) {
     let mut all_effects = HashMap::new();
     let mut all_events = HashMap::new();
+    let mut all_objects = HashSet::new();
     for reply in replies {
         let effects = reply.signed_effects.into_data();
         all_effects.insert(effects.digest(), effects);
         all_events.insert(reply.events.digest(), reply.events);
+        all_objects.insert(reply.fastpath_input_objects);
     }
     assert_eq!(all_effects.len(), 1);
     assert_eq!(all_events.len(), 1);
+    assert_eq!(all_objects.len(), 1);
     (
         all_effects.into_values().next().unwrap(),
         all_events.into_values().next().unwrap(),
+        all_objects.into_iter().next().unwrap(),
     )
 }
 

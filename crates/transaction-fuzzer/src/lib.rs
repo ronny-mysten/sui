@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod account_universe;
+pub mod config_fuzzer;
 pub mod executor;
+pub mod programmable_transaction_gen;
 pub mod transaction_data_gen;
 pub mod type_arg_fuzzer;
 
@@ -16,7 +18,7 @@ use sui_types::crypto::get_key_pair;
 use sui_types::crypto::AccountKeyPair;
 use sui_types::digests::TransactionDigest;
 use sui_types::object::{MoveObject, Object, Owner, OBJECT_START_VERSION};
-use sui_types::{gas_coin::TOTAL_SUPPLY_MIST, messages::GasData};
+use sui_types::{gas_coin::TOTAL_SUPPLY_MIST, transaction::GasData};
 
 use proptest::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};

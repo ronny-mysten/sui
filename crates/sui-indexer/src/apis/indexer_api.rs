@@ -12,24 +12,22 @@ use jsonrpsee::types::SubscriptionResult;
 use jsonrpsee::{RpcModule, SubscriptionSink};
 
 use move_core_types::identifier::Identifier;
-use sui_core::event_handler::EventHandler;
+use sui_core::event_handler::SubscriptionHandler;
 use sui_json_rpc::api::{
     validate_limit, IndexerApiClient, IndexerApiServer, QUERY_MAX_RESULT_LIMIT,
-    QUERY_MAX_RESULT_LIMIT_OBJECTS,
 };
 use sui_json_rpc::indexer_api::spawn_subscription;
 use sui_json_rpc::SuiRpcModule;
 use sui_json_rpc_types::{
     DynamicFieldPage, EventFilter, EventPage, ObjectsPage, Page, SuiObjectDataFilter,
     SuiObjectResponse, SuiObjectResponseQuery, SuiTransactionBlockResponseQuery,
-    TransactionBlocksPage,
+    TransactionBlocksPage, TransactionFilter,
 };
 use sui_open_rpc::Module;
 use sui_types::base_types::{ObjectID, SuiAddress};
 use sui_types::digests::TransactionDigest;
 use sui_types::dynamic_field::DynamicFieldName;
 use sui_types::event::EventID;
-use sui_types::query::TransactionFilter;
 
 use crate::errors::IndexerError;
 use crate::store::IndexerStore;
@@ -37,7 +35,7 @@ use crate::store::IndexerStore;
 pub(crate) struct IndexerApi<S> {
     state: S,
     fullnode: HttpClient,
-    event_handler: Arc<EventHandler>,
+    subscription_handler: Arc<SubscriptionHandler>,
     migrated_methods: Vec<String>,
 }
 
@@ -45,13 +43,13 @@ impl<S: IndexerStore> IndexerApi<S> {
     pub fn new(
         state: S,
         fullnode_client: HttpClient,
-        event_handler: Arc<EventHandler>,
+        event_handler: Arc<SubscriptionHandler>,
         migrated_methods: Vec<String>,
     ) -> Self {
         Self {
             state,
             fullnode: fullnode_client,
-            event_handler,
+            subscription_handler: event_handler,
             migrated_methods,
         }
     }
@@ -75,7 +73,7 @@ impl<S: IndexerStore> IndexerApi<S> {
         limit: Option<usize>,
         descending_order: Option<bool>,
     ) -> Result<TransactionBlocksPage, IndexerError> {
-        let limit = validate_limit(limit, QUERY_MAX_RESULT_LIMIT)?;
+        let limit = validate_limit(limit, *QUERY_MAX_RESULT_LIMIT)?;
         let is_descending = descending_order.unwrap_or_default();
         let cursor_str = cursor.map(|digest| digest.to_string());
         let mut tx_vec_from_db = match query.filter {
@@ -285,7 +283,7 @@ impl<S: IndexerStore> IndexerApi<S> {
             None => Ok((address, None)),
         }?;
         let options = options.unwrap_or_default();
-        let limit = validate_limit(limit, QUERY_MAX_RESULT_LIMIT_OBJECTS)?;
+        let limit = validate_limit(limit, *QUERY_MAX_RESULT_LIMIT)?;
 
         // NOTE: fetch one more object to check if there is next page
         let mut objects = self
@@ -435,7 +433,19 @@ where
     }
 
     fn subscribe_event(&self, sink: SubscriptionSink, filter: EventFilter) -> SubscriptionResult {
-        spawn_subscription(sink, self.event_handler.subscribe(filter));
+        spawn_subscription(sink, self.subscription_handler.subscribe_events(filter));
+        Ok(())
+    }
+
+    fn subscribe_transaction(
+        &self,
+        sink: SubscriptionSink,
+        filter: TransactionFilter,
+    ) -> SubscriptionResult {
+        spawn_subscription(
+            sink,
+            self.subscription_handler.subscribe_transactions(filter),
+        );
         Ok(())
     }
 

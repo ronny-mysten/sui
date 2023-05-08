@@ -3,7 +3,6 @@
 
 #[cfg(msim)]
 mod test {
-    use move_core_types::language_storage::StructTag;
     use rand::{distributions::uniform::SampleRange, thread_rng, Rng};
     use std::path::PathBuf;
     use std::str::FromStr;
@@ -30,7 +29,6 @@ mod test {
     use sui_simulator::{configs::*, SimConfig};
     use sui_types::base_types::{ObjectRef, SuiAddress};
     use sui_types::messages_checkpoint::VerifiedCheckpoint;
-    use test_utils::messages::get_sui_gas_object_with_wallet_context;
     use test_utils::network::{TestCluster, TestClusterBuilder};
     use tracing::{error, info};
     use typed_store::traits::Map;
@@ -263,15 +261,35 @@ mod test {
         // to the latest protocol version.
         let max_ver = ProtocolVersion::MAX.as_u64();
         let min_ver = max_ver - 1;
+        test_protocol_upgrade_compatibility_impl(min_ver, "testnet").await;
+    }
+
+    #[sim_test(config = "test_config()")]
+    async fn test_mainnet_upgrade_compatibility() {
+        // This test is intended to test the compatibility of the latest protocol version with
+        // the previous protocol version on mainnet. It does this by starting a network with
+        // the previous protocol version that this binary supports, and then upgrading the network
+        // to the latest protocol version.
+        let max_ver = ProtocolVersion::MAX.as_u64();
+        let min_ver = max_ver - 1;
+        test_protocol_upgrade_compatibility_impl(min_ver, "mainnet").await;
+    }
+
+    async fn test_protocol_upgrade_compatibility_impl(
+        starting_version: u64,
+        network: &'static str,
+    ) {
+        let max_ver = ProtocolVersion::MAX.as_u64();
         let init_framework =
-            sui_framework_snapshot::load_bytecode_snapshot("testnet", min_ver).unwrap();
+            sui_framework_snapshot::load_bytecode_snapshot(network, starting_version).unwrap();
         let mut test_cluster = init_test_cluster_builder(7, 5000)
-            .with_protocol_version(ProtocolVersion::new(min_ver))
+            .with_protocol_version(ProtocolVersion::new(starting_version))
             .with_supported_protocol_versions(SupportedProtocolVersions::new_for_testing(
-                min_ver, min_ver,
+                starting_version,
+                starting_version,
             ))
             .with_fullnode_supported_protocol_versions_config(
-                SupportedProtocolVersions::new_for_testing(min_ver, max_ver),
+                SupportedProtocolVersions::new_for_testing(starting_version, max_ver),
             )
             .with_objects(init_framework.into_iter().map(|p| p.genesis_object()))
             .with_stake_subsidy_start_epoch(10)
@@ -285,7 +303,7 @@ mod test {
         let finished = Arc::new(AtomicBool::new(false));
         let finished_clone = finished.clone();
         let _handle = tokio::task::spawn(async move {
-            for version in min_ver..=max_ver {
+            for version in starting_version..=max_ver {
                 info!("Targeting protocol version: {}", version);
                 test_cluster.wait_for_all_nodes_upgrade_to(version).await;
                 info!("All nodes are at protocol version: {}", version);
@@ -304,7 +322,7 @@ mod test {
                 }
                 let next_version = version + 1;
                 let new_framework =
-                    sui_framework_snapshot::load_bytecode_snapshot("testnet", next_version);
+                    sui_framework_snapshot::load_bytecode_snapshot(network, next_version);
                 let new_framework_ref: Vec<_> = match &new_framework {
                     Ok(f) => f.iter().collect(),
                     Err(_) => {
@@ -321,7 +339,7 @@ mod test {
                 info!("Framework injected");
                 test_cluster
                     .update_validator_supported_versions(
-                        SupportedProtocolVersions::new_for_testing(min_ver, next_version),
+                        SupportedProtocolVersions::new_for_testing(starting_version, next_version),
                     )
                     .await;
             }
@@ -369,7 +387,7 @@ mod test {
     struct TestInitData {
         keystore_path: PathBuf,
         genesis: Genesis,
-        pub all_gas: Vec<(StructTag, ObjectRef)>,
+        pub primary_gas: ObjectRef,
         pub sender: SuiAddress,
     }
 
@@ -379,8 +397,12 @@ mod test {
             Self {
                 keystore_path: test_cluster.swarm.dir().join(SUI_KEYSTORE_FILENAME),
                 genesis: test_cluster.swarm.config().genesis.clone(),
-                all_gas: get_sui_gas_object_with_wallet_context(&test_cluster.wallet, &sender)
-                    .await,
+                primary_gas: test_cluster
+                    .wallet
+                    .get_one_gas_object_owned_by_address(sender)
+                    .await
+                    .unwrap()
+                    .unwrap(),
                 sender,
             }
         }
@@ -390,14 +412,13 @@ mod test {
         let TestInitData {
             keystore_path,
             genesis,
-            all_gas,
+            primary_gas,
             sender,
         } = init_data;
 
         let ed25519_keypair =
             Arc::new(get_ed25519_keypair_from_keystore(keystore_path, &sender).unwrap());
-        let (_, gas) = all_gas.get(0).unwrap();
-        let primary_coin = (gas.clone(), sender, ed25519_keypair.clone());
+        let primary_coin = (primary_gas, sender, ed25519_keypair.clone());
 
         let registry = prometheus::Registry::new();
         let proxy: Arc<dyn ValidatorProxy + Send + Sync> =

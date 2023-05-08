@@ -23,15 +23,10 @@ use sui_types::crypto::{
     generate_proof_of_possession, get_account_key_pair, get_key_pair_from_rng, AccountKeyPair,
     KeypairTraits, ToFromBytes,
 };
+use sui_types::effects::{CertifiedTransactionEffects, TransactionEffectsAPI};
 use sui_types::error::SuiError;
 use sui_types::gas::GasCostSummary;
 use sui_types::message_envelope::Message;
-use sui_types::messages::{
-    CallArg, CertifiedTransactionEffects, ObjectArg, TransactionData, TransactionDataAPI,
-    TransactionEffectsAPI, TransactionExpiration, VerifiedTransaction,
-    TEST_ONLY_GAS_UNIT_FOR_GENERIC, TEST_ONLY_GAS_UNIT_FOR_STAKING,
-    TEST_ONLY_GAS_UNIT_FOR_TRANSFER, TEST_ONLY_GAS_UNIT_FOR_VALIDATOR,
-};
 use sui_types::object::{
     generate_test_gas_objects_with_owner, generate_test_gas_objects_with_owner_and_value, Object,
 };
@@ -39,6 +34,11 @@ use sui_types::sui_system_state::sui_system_state_inner_v1::VerifiedValidatorMet
 use sui_types::sui_system_state::{
     get_validator_from_table, sui_system_state_summary::get_validator_by_pool_id,
     SuiSystemStateTrait,
+};
+use sui_types::transaction::{
+    CallArg, ObjectArg, TransactionData, TransactionDataAPI, TransactionExpiration,
+    VerifiedTransaction, TEST_ONLY_GAS_UNIT_FOR_GENERIC, TEST_ONLY_GAS_UNIT_FOR_STAKING,
+    TEST_ONLY_GAS_UNIT_FOR_TRANSFER, TEST_ONLY_GAS_UNIT_FOR_VALIDATOR,
 };
 use sui_types::utils::to_sender_signed_transaction;
 use sui_types::{
@@ -183,7 +183,7 @@ async fn reconfig_with_revert_end_to_end_test() {
         .await
         .unwrap()
         .into_cert_for_testing();
-    let (effects1, _) = net
+    let (effects1, _, _) = net
         .process_certificate(cert.clone().into_inner())
         .await
         .unwrap();
@@ -474,7 +474,7 @@ async fn test_validator_resign_effects() {
         .await
         .unwrap()
         .into_cert_for_testing();
-    let (effects0, _) = net
+    let (effects0, _, _) = net
         .process_certificate(cert.clone().into_inner())
         .await
         .unwrap();
@@ -483,8 +483,10 @@ async fn test_validator_resign_effects() {
     sleep(Duration::from_secs(10)).await;
     trigger_reconfiguration(&authorities).await;
     // Manually reconfigure the aggregator.
-    net.committee.epoch = 1;
-    let (effects1, _) = net.process_certificate(cert.into_inner()).await.unwrap();
+    let mut committee = net.clone_inner_committee_test_only();
+    committee.epoch = 1;
+    net.committee = Arc::new(committee);
+    let (effects1, _, _) = net.process_certificate(cert.into_inner()).await.unwrap();
     // Ensure that we are able to form a new effects cert in the new epoch.
     assert_eq!(effects1.epoch(), 1);
     assert_eq!(effects0.into_message(), effects1.into_message());
@@ -1125,10 +1127,12 @@ async fn test_reconfig_with_committee_change_stress() {
 #[sim_test]
 async fn safe_mode_reconfig_test() {
     use sui_types::sui_system_state::advance_epoch_result_injection;
-    use test_utils::messages::make_staking_transaction_with_wallet_context;
 
-    let mut test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(5000)
+    // Inject failure at epoch change 1 -> 2.
+    advance_epoch_result_injection::set_override(Some((2, 3)));
+
+    let test_cluster = TestClusterBuilder::new()
+        .with_epoch_duration_ms(3000)
         .build()
         .await
         .unwrap();
@@ -1150,18 +1154,10 @@ async fn safe_mode_reconfig_test() {
     assert_eq!(system_state.epoch(), 1);
     assert_eq!(system_state.system_state_version(), 2);
 
-    // Wait for all nodes to enter new epoch (otherwise we can call
-    // advance_epoch_result_injection::set_override();
-    // while one node is still in epoch 1, which will cause it to fork).
-    sleep(Duration::from_secs(3)).await;
-
     let prev_epoch_start_timestamp = system_state.epoch_start_timestamp_ms();
 
     // We are going to enter safe mode so set the expectation right.
     test_cluster.set_safe_mode_expected(true);
-
-    // Now inject an error into epoch change txn execution.
-    advance_epoch_result_injection::set_override(true);
 
     // Reconfig again and check that we are in safe mode now.
     let system_state = test_cluster.wait_for_epoch(Some(2)).await;
@@ -1175,9 +1171,10 @@ async fn safe_mode_reconfig_test() {
         .into_sui_system_state_summary()
         .active_validators[0]
         .sui_address;
-    let txn =
-        make_staking_transaction_with_wallet_context(test_cluster.wallet_mut(), validator_address)
-            .await;
+    let txn = test_cluster
+        .wallet
+        .make_staking_transaction(validator_address)
+        .await;
     let response = test_cluster
         .execute_transaction(txn)
         .await
@@ -1186,7 +1183,6 @@ async fn safe_mode_reconfig_test() {
 
     // Now remove the override and check that in the next epoch we are no longer in safe mode.
     test_cluster.set_safe_mode_expected(false);
-    advance_epoch_result_injection::set_override(false);
 
     let system_state = test_cluster.wait_for_epoch(Some(3)).await;
     assert!(!system_state.safe_mode());
