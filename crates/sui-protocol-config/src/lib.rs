@@ -331,7 +331,7 @@ pub struct ProtocolConfig {
     /// The max computation bucket for gas. This is the max that can be charged for computation.
     max_gas_computation_bucket: Option<u64>,
 
-    // Define the value used to round up computation gas charges
+    /// Define the value used to round up computation gas charges
     gas_rounding_step: Option<u64>,
 
     /// Maximum number of nested loops. Enforced by the Move bytecode verifier.
