@@ -5,13 +5,13 @@ slug: /full-node
 
 :::info
 
-These instructions are for advanced users. If you just need a local development environment, you should instead follow the instructions in [Create a Local Sui Network](../../build/setup/local-network.mdx) to create a local Full node, validators, and faucet.
+These instructions are for advanced users. If you just need a local development environment, you should instead follow the instructions in Create a Local Sui Network to create a local Full node, validators, and faucet.
 
 :::
 
 Sui Full nodes validate blockchain activities, including transactions, checkpoints, and epoch changes. Each Full node stores and services the queries for the blockchain state and history.
 
-This role enables [validators](../../contribute/nodes/validator.mdx) to focus on servicing and processing transactions. When a validator commits a new set of transactions (or a block of transactions), the validator pushes that block to all connected Full nodes that then service the queries from clients.
+This role enables validators to focus on servicing and processing transactions. When a validator commits a new set of transactions (or a block of transactions), the validator pushes that block to all connected Full nodes that then service the queries from clients.
 
 ## Features {#features}
 
@@ -59,7 +59,7 @@ Suggested minimum hardware to run a Sui Full node:
 Sui recommends running Sui Full nodes on Linux. Sui supports the Ubuntu and
 Debian distributions. You can also run a Sui Full node on macOS.
 
-Make sure to update [Rust](../../build/setup/cli/install-sui.mdx#rust).
+Make sure to update Rust.
 
 Use the following command to install additional Linux dependencies.
 
@@ -121,7 +121,7 @@ You must get the latest source files from the Sui GitHub repository.
 
 Open a terminal or console to the `sui` directory you downloaded in the previous steps to complete the following:
 
-1.  Install the required [Prerequisites](../../build/setup/cli/install-sui.mdx#prerequisites).
+1.  Install the required Prerequisites.
 1.  Make a copy of the [Full node YAML template](https://github.com/MystenLabs/sui/blob/main/crates/sui-config/data/fullnode-template.yaml):
     ```bash
     cp crates/sui-config/data/fullnode-template.yaml fullnode.yaml
@@ -173,7 +173,7 @@ At this point, your Sui Full node is ready to connect to the Sui network.
     ```bash
     cargo run --release --bin sui-node -- --config-path fullnode.yaml
     ```
-1.  Optional: [Publish/subscribe](../../references/event-query-and-subscription.mdx#subscribe-events) to notifications using JSON-RPC via websocket.
+1.  Optional: Publish/subscribe to notifications using JSON-RPC via websocket.
 
 If your setup is successful, your Sui Full node is now connected to the appropriate network.
 

@@ -2,20 +2,226 @@
 title: Sui Full Node
 ---
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Scelerisque fermentum dui faucibus in ornare. Ut tristique et egestas quis ipsum suspendisse. Ac placerat vestibulum lectus mauris ultrices eros. Lorem ipsum dolor sit amet. Justo nec ultrices dui sapien eget mi proin sed libero. Nunc lobortis mattis aliquam faucibus. Nec ultrices dui sapien eget mi proin sed. Tellus elementum sagittis vitae et. Tellus at urna condimentum mattis pellentesque id nibh tortor. Sit amet venenatis urna cursus. Imperdiet sed euismod nisi porta lorem mollis aliquam ut. Malesuada fames ac turpis egestas maecenas pharetra convallis posuere.
+:::info
 
-## Vel orci
+These instructions are for advanced users. If you just need a local development environment, you should instead follow the instructions in [Create a Local Sui Network](../developer/getting-started/local-network.mdx) to create a local Full node, validators, and faucet.
 
-Vel orci porta non pulvinar neque laoreet suspendisse interdum. Gravida rutrum quisque non tellus orci ac. Odio ut sem nulla pharetra diam. Ipsum consequat nisl vel pretium lectus quam id. Vitae justo eget magna fermentum iaculis eu non diam. Est ultricies integer quis auctor elit sed vulputate mi. Vulputate enim nulla aliquet porttitor lacus luctus accumsan. Aliquet risus feugiat in ante metus dictum at tempor. Pulvinar mattis nunc sed blandit libero volutpat sed cras ornare. In fermentum et sollicitudin ac orci phasellus egestas. Morbi tristique senectus et netus et malesuada fames. Eros in cursus turpis massa tincidunt dui ut ornare. Id porta nibh venenatis cras sed felis eget. Sem et tortor consequat id porta nibh. Tempus egestas sed sed risus pretium quam. Vitae tempus quam pellentesque nec nam aliquam. Scelerisque varius morbi enim nunc faucibus a pellentesque. Ut pharetra sit amet aliquam id diam maecenas.
+:::
 
-## Nunc mi ipsum
+Sui Full nodes validate blockchain activities, including transactions, checkpoints, and epoch changes. Each Full node stores and services the queries for the blockchain state and history.
 
-Nunc mi ipsum faucibus vitae aliquet nec ullamcorper sit. Id venenatis a condimentum vitae. Porta lorem mollis aliquam ut. Ornare suspendisse sed nisi lacus sed. Purus ut faucibus pulvinar elementum integer enim. Egestas integer eget aliquet nibh praesent tristique magna sit. Massa tempor nec feugiat nisl pretium fusce id velit. Integer malesuada nunc vel risus commodo viverra maecenas accumsan. Mi proin sed libero enim. Nunc sed id semper risus in. Pretium vulputate sapien nec sagittis aliquam malesuada. Duis tristique sollicitudin nibh sit amet. Tincidunt praesent semper feugiat nibh sed pulvinar proin gravida hendrerit. Purus gravida quis blandit turpis cursus in hac habitasse. Lacus sed viverra tellus in hac habitasse platea dictumst vestibulum. A scelerisque purus semper eget duis at tellus at. Vitae tempus quam pellentesque nec nam. Id eu nisl nunc mi ipsum faucibus vitae aliquet.
+This role enables validators to focus on servicing and processing transactions. When a validator commits a new set of transactions (or a block of transactions), the validator pushes that block to all connected Full nodes that then service the queries from clients.
 
-## Dis parturient montes
+## Features 
 
-Dis parturient montes nascetur ridiculus. Aliquam malesuada bibendum arcu vitae elementum curabitur vitae nunc sed. Adipiscing elit pellentesque habitant morbi. Enim diam vulputate ut pharetra. Feugiat pretium nibh ipsum consequat. Ullamcorper morbi tincidunt ornare massa. Malesuada fames ac turpis egestas integer eget aliquet nibh. Ac turpis egestas integer eget aliquet nibh. Consequat mauris nunc congue nisi. Vitae semper quis lectus nulla at volutpat diam ut. Risus quis varius quam quisque id diam vel. Massa tempor nec feugiat nisl pretium fusce. Fringilla phasellus faucibus scelerisque eleifend donec pretium vulputate. Mollis aliquam ut porttitor leo a diam sollicitudin tempor id.
+Sui Full nodes:
+- Track and verify the state of the blockchain, independently and locally.
+- Serve read requests from clients.
 
-## Augue mauris
+## State synchronization 
+Sui Full nodes sync with validators to receive new transactions on the network.
 
-Augue mauris augue neque gravida in fermentum et sollicitudin ac. Augue eget arcu dictum varius. Maecenas volutpat blandit aliquam etiam erat velit scelerisque. Mi ipsum faucibus vitae aliquet nec. Eros donec ac odio tempor orci. Tellus molestie nunc non blandit massa enim nec dui nunc. Nullam vehicula ipsum a arcu cursus vitae congue mauris. Curabitur gravida arcu ac tortor dignissim convallis aenean et. Varius sit amet mattis vulputate enim nulla aliquet porttitor. Amet purus gravida quis blandit turpis. Non sodales neque sodales ut etiam sit. Fermentum iaculis eu non diam phasellus vestibulum lorem. Cras adipiscing enim eu turpis egestas. Ac feugiat sed lectus vestibulum mattis ullamcorper velit. Elit duis tristique sollicitudin nibh.
+A transaction requires a few round trips to 2f+1 validators to form a transaction certificate (TxCert).
+
+This synchronization process includes:
+
+1. Following 2f+1 validators and listening for newly committed transactions.
+1. Making sure that 2f+1 validators recognize the transaction and that it reaches finality.
+1. Executing the transaction locally and updating the local DB.
+
+This synchronization process requires listening to at a minimum 2f+1 validators to ensure that a Full node has properly processed all new transactions. Sui will improve the synchronization process with the introduction of checkpoints and the ability to synchronize with other Full nodes.
+
+## Architecture 
+
+A Sui Full node is essentially a read-only view of the network state. Unlike validator nodes, Full nodes cannot sign transactions, although they can validate the integrity of the chain by re-executing transactions that a quorum of validators previously committed.
+
+Today, a Sui Full node maintains the full history of the chain.
+
+Validator nodes store only the latest transactions on the frontier of the object graph (for example, transactions with >0 unspent output objects).
+
+## Full node setup 
+
+Follow the instructions here to run your own Sui Full.
+
+### Hardware requirements 
+
+Suggested minimum hardware to run a Sui Full node:
+
+- CPUs: 8 physical cores / 16 vCPUs
+- RAM: 128 GB
+- Storage (SSD): 2 TB NVMe drive
+
+### Software requirements 
+
+Sui recommends running Sui Full nodes on Linux. Sui supports the Ubuntu and Debian distributions. You can also run a Sui Full node on macOS.
+
+Make sure to [update Rust](https://doc.rust-lang.org/book/ch01-01-installation.html#updating-and-uninstalling).
+
+Use the following command to install additional Linux dependencies.
+
+```shell
+sudo apt-get update \
+&& sudo apt-get install -y --no-install-recommends \
+tzdata \
+libprotobuf-dev \
+ca-certificates \
+build-essential \
+libssl-dev \
+libclang-dev \
+pkg-config \
+openssl \
+protobuf-compiler \
+git \
+clang \
+cmake
+```
+
+## Configure a Full node 
+
+You can configure a Sui Full node either using Docker or by building from source.
+
+### Using Docker Compose 
+
+Follow the instructions in the [Full node Docker Readme](https://github.com/MystenLabs/sui/tree/main/docker/fullnode#readme) to run a Sui Full node using Docker, including [resetting the environment](https://github.com/MystenLabs/sui/tree/main/docker/fullnode#reset-the-environment).
+
+### Setting up a local Sui repository 
+
+You must get the latest source files from the Sui GitHub repository.
+1. Set up your fork of the Sui repository:
+    1. Go to the [Sui repository](https://github.com/MystenLabs/sui) on GitHub and click the Fork button in the top right-hand corner of the screen.
+    1. Clone your personal fork of the Sui repository to your local machine (ensure that you insert your GitHub username into the URL):
+    `git clone https://github.com/<YOUR-GITHUB-USERNAME>/sui.git`
+1. `cd` into your `sui` repository:
+    `cd sui`
+1. Set up the Sui repository as a git remote:
+    `git remote add upstream https://github.com/MystenLabs/sui`
+1. Sync your fork:
+    `git fetch upstream`
+1. Check out the branch associated with the network version you want to run (for example, `devnet` to run a Devnet Full node):
+    `git checkout --track upstream/<BRANCH-NAME>`
+
+### Setting up a Full node from source 
+
+Open a terminal or console to the `sui` directory you downloaded in the previous steps to complete the following:
+1. Install the required prerequisites.
+1. Make a copy of the [Full node YAML template](https://github.com/MystenLabs/sui/blob/main/crates/sui-config/data/fullnode-template.yaml):
+    `cp crates/sui-config/data/fullnode-template.yaml fullnode.yaml`
+1. Download the genesis blob for the network to use:
+    - [Devnet genesis blob](https://github.com/MystenLabs/sui-genesis/raw/main/devnet/genesis.blob):
+        `curl -fLJO https://github.com/MystenLabs/sui-genesis/raw/main/devnet/genesis.blob`
+    - [Testnet genesis blob](https://github.com/MystenLabs/sui-genesis/raw/main/testnet/genesis.blob):
+        `curl -fLJO https://github.com/MystenLabs/sui-genesis/raw/main/testnet/genesis.blob`
+    - [Mainnet genesis blob](https://github.com/MystenLabs/sui-genesis/raw/main/mainnet/genesis.blob):
+        `curl -fLJO https://github.com/MystenLabs/sui-genesis/raw/main/mainnet/genesis.blob`
+1. Testnet Full nodes only: Edit the `fullnode.yaml` file to include peer nodes for state synchronization. Append the following to the end of the current configuration:
+    ```shell
+    p2p-config:
+    seed-peers:
+        - address: /dns/ewr-tnt-ssfn-00.testnet.sui.io/udp/8084
+        peer-id: df8a8d128051c249e224f95fcc463f518a0ebed8986bbdcc11ed751181fecd38
+        - address: /dns/lax-tnt-ssfn-00.testnet.sui.io/udp/8084
+        peer-id: f9a72a0a6c17eed09c27898eab389add704777c03e135846da2428f516a0c11d
+        - address: /dns/lhr-tnt-ssfn-00.testnet.sui.io/udp/8084
+        peer-id: 9393d6056bb9c9d8475a3cf3525c747257f17c6a698a7062cbbd1875bc6ef71e
+        - address: /dns/mel-tnt-ssfn-00.testnet.sui.io/udp/8084
+        peer-id: c88742f46e66a11cb8c84aca488065661401ef66f726cb9afeb8a5786d83456e
+    ```
+1. Optional: Skip this step to accept the default paths to resources. Edit the fullnode.yaml file to use custom paths.
+1. Update the `db-path` field with the path to the Full node database.
+    `db-path: "/db-files/sui-fullnode"`
+1. Update the `genesis-file-location` with the path to genesis.blob.
+    ```shell
+    genesis:
+        genesis-file-location: "/sui-fullnode/genesis.blob"
+    ```
+
+### Starting services 
+
+At this point, your Sui Full node is ready to connect to the Sui network.
+
+1. Open a terminal or console to the sui directory.
+1. Start the Sui Full node:
+    `cargo run --release --bin sui-node -- --config-path fullnode.yaml`
+1. Optional: Publish/subscribe to notifications using JSON-RPC via websocket.
+
+If your setup is successful, your Sui Full node is now connected to the appropriate network.
+
+Your Full node serves the read endpoints of the Sui JSON-RPC API at: `http://127.0.0.1:9000`.
+
+### Troubleshooting 
+If you receive a `cannot find -lpq` error, you are missing the `libpq` library. Use `sudo apt-get install libpq-dev` to install on Linux, or `brew install libpq` on MacOS. After you install on MacOS, create a Homebrew link using `brew link --force libpq`. For further context, reference the [issue on Stack Overflow](https://stackoverflow.com/questions/70313347/ld-library-not-found-for-lpq-when-build-rust-in-macos?rq=1).
+
+If you receive the following error:
+
+```shell
+panicked at error binding to 0.0.0.0:9184: error creating server listener: Address already in use (os error 98)
+```
+
+Then update the metrics address in your fullnode.yaml file to use port `9180`.
+
+```shell
+metrics-address: "0.0.0.0:9180"
+```
+
+## Sui Explorer with your Full node 
+
+[Sui Explorer](https://suiexplorer.com/) supports connections to custom RPC URLS and local networks. You can point the Explorer to your local Full node and see the transactions it syncs from the network.
+1. Open a browser and go to: https://suiexplorer.com/
+1. Click **Mainnet** in the network drop-down at the top right-hand corner (or three bars on smaller screens) and select **Local** to connect to a local network, or select **Custom RPC URL** and then enter the URL.
+
+Sui Explorer displays information about the selected network.
+
+## Monitoring 
+Monitor your Full node using the instructions at Logging, Tracing, Metrics, and Observability.
+
+The default metrics port is `9184`. To change the port, edit your fullnode.yaml file.
+
+## Update your Full node 
+
+Whenever Sui releases a new version, you must update your Full node with the release to ensure compatibility with the network it connects to. For example, if you use Sui Testnet you should install the version of Sui running on Sui Testnet.
+
+### Update with Docker Compose 
+
+Follow the instructions to [reset the environment](https://github.com/MystenLabs/sui/tree/main/docker/fullnode#reset-the-environment), namely by running the command:
+
+```shell
+docker-compose down --volumes
+```
+
+### Update from source 
+
+If you followed the instructions for Building from Source, use the following steps to update your Full node:
+
+1. Shut down your running Full node.
+1. `cd` into your local Sui repository:
+    ```shell
+    cd sui
+    ```
+1. Remove the database and 'genesis.blob' file:
+    ```shell
+    rm -r suidb genesis.blob
+    ```
+1. Fetch the source from the latest release:
+    ```shell
+    git fetch upstream
+    ```
+1. Reset your branch:
+    ```shell
+    git checkout -B <BRANCH-NAME> --track upstream/<BRANCH-NAME>
+    ```
+1. Download the latest genesis blob:
+    - [Devnet genesis blob](https://github.com/MystenLabs/sui-genesis/raw/main/devnet/genesis.blob):
+        ```shell
+        curl -fLJO https://github.com/MystenLabs/sui-genesis/raw/main/devnet/genesis.blob
+        ```
+    - [Testnet genesis blob](https://github.com/MystenLabs/sui-genesis/raw/main/testnet/genesis.blob):
+        ```shell
+        curl -fLJO https://github.com/MystenLabs/sui-genesis/raw/main/testnet/genesis.blob
+        ```
+1. Update your fullnode.yaml configuration file, if needed.
+1. Restart your Sui Full node:
+    ```shell
+    cargo run --release --bin sui-node -- --config-path fullnode.yaml
+    ```
+    
+Your Full node starts on: http://127.0.0.1:9000.
