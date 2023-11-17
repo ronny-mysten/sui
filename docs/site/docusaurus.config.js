@@ -33,7 +33,7 @@ const config = {
     mermaid: true,
   },
   plugins: [
-    // ....
+    "./src/plugins/sui-docs-inject-code",
     [
       "docusaurus-plugin-includes",
       {
