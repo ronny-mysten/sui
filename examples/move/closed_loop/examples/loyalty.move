@@ -35,6 +35,7 @@ module examples::loyalty {
         id: UID
     }
 
+    // docs::#section-3
     // Create a new LOYALTY currency, create a `TokenPolicy` for it and allow
     // everyone to spend `Token`s if they were `reward`ed.
     fun init(otw: LOYALTY, ctx: &mut TxContext) {
@@ -66,6 +67,8 @@ module examples::loyalty {
         transfer::public_transfer(policy_cap, tx_context::sender(ctx));
         transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
     }
+
+    // docs::/#section-3
 
     /// Handy function to reward users. Can be called by the application admin
     /// to reward users for their loyalty :)
