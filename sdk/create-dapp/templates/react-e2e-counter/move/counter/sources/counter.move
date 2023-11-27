@@ -17,11 +17,11 @@ module counter::counter {
         owner: address,
         value: u64
     }
-
+// docs::#owner
     public fun owner(counter: &Counter): address {
         counter.owner
     }
-
+// docs::/#owner
     public fun value(counter: &Counter): u64 {
         counter.value
     }

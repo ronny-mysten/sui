@@ -1,3 +1,4 @@
+// docs::#imports
 import { TransactionBlock } from "@mysten/sui.js/transactions";
 import { Button, Container } from "@radix-ui/themes";
 import {
@@ -5,7 +6,8 @@ import {
   useSuiClient,
 } from "@mysten/dapp-kit";
 import { useNetworkVariable } from "./networkConfig";
-
+// docs::/#imports
+// docs::#createCounter
 export function CreateCounter({
   onCreated,
 }: {
@@ -27,7 +29,8 @@ export function CreateCounter({
       </Button>
     </Container>
   );
-
+// docs::/#createCounter});
+// docs::#create
   function create() {
     const txb = new TransactionBlock();
 
@@ -61,4 +64,5 @@ export function CreateCounter({
       },
     );
   }
+  // docs::/#create
 }

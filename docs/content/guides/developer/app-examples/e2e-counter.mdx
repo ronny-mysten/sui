@@ -39,40 +39,7 @@ This creates a new, empty Move package in a new `move/counter` directory with a 
 
 Add your Move code under `sources` by creating a new `counter.move` file:
 
-```rust
-module counter::counter {
-    use sui::transfer;
-    use sui::object::{Self, UID};
-    use sui::tx_context::{Self, TxContext};
-
-    /// A shared counter.
-    struct Counter has key {
-        id: UID,
-        owner: address,
-        value: u64
-    }
-
-    /// Create and share a Counter object.
-    public fun create(ctx: &mut TxContext) {
-        transfer::share_object(Counter {
-            id: object::new(ctx),
-            owner: tx_context::sender(ctx),
-            value: 0
-        })
-    }
-
-    /// Increment a counter by 1.
-    public fun increment(counter: &mut Counter) {
-        counter.value = counter.value + 1;
-    }
-
-    /// Set value (only runnable by the Counter owner)
-    public fun set_value(counter: &mut Counter, value: u64, ctx: &TxContext) {
-        assert!(counter.owner == tx_context::sender(ctx), 0);
-        counter.value = value;
-    }
-}
-```
+{@inject: sdk/create-dapp/templates/react-e2e-counter/move/counter/sources/counter.move}
 
 Now that you have your Move code, you need to publish it. The Client App with Sui TypeScript SDK example and the app template use `testnet` by default, so configure your code to match the network you want to deploy to.
 
@@ -143,6 +110,8 @@ export const COUNTER_PACKAGE_ID =
 ## Creating a counter
 
 Now that you've published your Move code, you can start building your UI to use your Move package. You need a way to create a new `Counter` object. Do this by creating a new `CreateCounter` component:
+
+{@inject: sdk/create-dapp/templates/react-e2e-counter/src/createCounter.tsx#createCounter}
 
 ```ts
 export function CreateCounter(props: { onCreated: (id: string) => void }) {

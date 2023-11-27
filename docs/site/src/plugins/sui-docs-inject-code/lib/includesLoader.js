@@ -17,13 +17,14 @@ const markdownLoader = function (source) {
     const options = this.getOptions();
     const markdownFilename = path_1.default.basename(this.resourcePath);
     const markdownFilepath = path_1.default.dirname(this.resourcePath);
+    const repoPath = path_1.default.join(__dirname, '../../../../../..');
     // Do not load and render markdown files without docusaurus header.
     // These files are only used to be included in other files and should not generate their own web page
     if (fileString.length >= 3 && fileString.substring(0, 3) !== '---') {
         return (callback && callback(null, ""));
     }
     function addMarkdownIncludes(fileContent) {
-        var res = fileContent;
+        let res = fileContent;
         const matches = fileContent.match(/\{@\w+: .+\}/g);
         if (matches) {
             matches.forEach(match => {
@@ -31,42 +32,79 @@ const markdownLoader = function (source) {
                 if (match.startsWith('{@inject: ')) {
                     const injectFileFull = match.substring(10, match.length - 1);
                     const injectFile = injectFileFull.substring(0, injectFileFull.indexOf('#') > 0 ? injectFileFull.indexOf('#') : injectFileFull.length);
-                    const fullPath = path_1.default.join(markdownFilepath, injectFile);
+                    let fileExt = injectFile.substring(injectFile.lastIndexOf('.') + 1);
+                    let language = "";
+                    const fullPath = path_1.default.join(repoPath, injectFile);
+                    switch (fileExt) {
+                        case "move":
+                            language = "rust";
+                            break;
+                        case "toml":
+                            language = "rust";
+                            break;
+                        case "lock":
+                            language = "rust";
+                            break;
+                        case "sh":
+                            language = "shell";
+                            break;
+                        case 'mdx':
+                            language = "markdown";
+                            break;
+                        case 'tsx':
+                            language = "ts";
+                            break;
+                        default:
+                            language = fileExt;
+                    }
                     if (fs_1.default.existsSync(fullPath)) {
-                        var injectFileContent = fs_1.default.readFileSync(fullPath, "utf8");
+                        let injectFileContent = fs_1.default.readFileSync(fullPath, "utf8");
                         const marker = injectFileFull.indexOf('#') > 0 ? injectFileFull.substring(injectFileFull.indexOf('#')) : null;
                         if (marker) {
-                            const regexStr = `\/\/s*docs::${marker}\(.*?)\/\/\s*docs::\/\s?${marker}`;
-                            const regex = RegExp(regexStr, "g");
+                            const regexStr = `\/\/\\s*?docs::${marker}([\\s\\S]*?)\/\/\\s*?docs::\/\\s*?${marker}`;
+                            const closingsStr = `\/\/\\s*?docs::\/${marker}([)};]+)`;
+                            const closingRE = new RegExp(closingsStr);
+                            const regex = new RegExp(regexStr, "g");
                             const match = regex.exec(injectFileContent);
-                            console.log(regexStr);
-                            const matches = injectFileContent.match(regex);
-                            //injectFileContent = matches || [];
+                            const closingStr = closingRE.exec(injectFileContent);
+                            if (match) {
+                                injectFileContent = match[1];
+                            }
+                            if (closingStr) {
+                                const closingTotal = closingStr[1].length;
+                                let closingArray = [];
+                                for (let i = 0; i < closingTotal; i++) {
+                                    const currentChar = closingStr[1][i];
+                                    const nextChar = closingStr[1][i + 1];
+                                    if (nextChar === ';') {
+                                        closingArray.push(currentChar + nextChar);
+                                        i++;
+                                    }
+                                    else {
+                                        closingArray.push(currentChar);
+                                    }
+                                }
+                                const totClosings = closingArray.length;
+                                //let closing = `${'\t'.repeat(totClosings - 1)}${closingArray[0]}`;
+                                let closing = "";
+                                for (let j = 0; j < totClosings; j++) {
+                                    let space = '  '.repeat((totClosings - 1) - j);
+                                    closing += `\n${space}${closingArray[j]}`;
+                                }
+                                injectFileContent = injectFileContent.trim() + closing;
+                            }
+                            else {
+                                console.log("NOT");
+                            }
                         }
+                        injectFileContent = injectFileContent.replace(/\/\/\s*docs\/?::.*/g, '');
+                        injectFileContent = `\`\`\`${language} title=${injectFile}\n${injectFileContent}\n\`\`\``;
                         res = res.replace(replacer, injectFileContent);
                         res = addMarkdownIncludes(res);
                     }
                     else {
                         res = res.replace(replacer, `\n> code to inject not found: ${injectFile} --> ${fullPath}\n`);
                     }
-                    /*if (marker){
-                      console.log(marker)
-                      console.log(injectFile)
-                      console.log(fullPath)
-                    } else {
-                      console.log(injectFile)
-                    }
-                    
-                    const includeFile = match.substring(11, match.length - 1);
-                    const fullPath = path.join(markdownFilepath, includeFile);
-                    if (fs.existsSync(fullPath)) {
-                      var includeFileContent = fs.readFileSync(fullPath, "utf8");
-                      res = res.replace(replacer, includeFileContent);
-                      res = addMarkdownIncludes(res);
-                    }
-                    else {
-                      res = res.replace(replacer, `\n> code to inject not found: ${includeFile} --> ${fullPath}\n`);
-                    }*/
                 }
                 else {
                     const parts = match.substring(2, match.length - 3).split(': ');
