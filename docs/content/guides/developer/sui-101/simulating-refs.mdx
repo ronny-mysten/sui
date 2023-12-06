@@ -1,6 +1,130 @@
 ---
 title: Simulating References
-draft: true
 ---
 
-Content coming soon
+
+
+Everything on the Sui blockchain is an object. When you develop Move packages for the Sui network, you're typically manipulating or using on-chain objects in some way through functionality available in the Sui API. For most API functions, you provide an object     
+
+References are a key construct when programming in Move and on Sui. Most of the available Sui API methods take objects by reference, which means you pass a pointer to the object instead of the object itself. 
+
+There are two ways to reference an object:
+- **by value:** When you reference an object by value, you have full control over that object. You can destroy it (if the functionality is available), move it (if you have the `store` ability), or transfer it to an address.
+- **by reference:** 
+
+Having an object by value (owning a value) gives full “rights” over that object, including the ability to destroy the object if such an API was available. The object could be moved anywhere if it had the store ability, or transferred to an address.
+
+When holding a reference, operations over an object are determined by the API the module that defines the object offers.
+
+A mutable reference could alter the object (according to the API) though it could not destroy it or transfer it, and an immutable reference further restricts the set of operations and the guarantees/invariants over the referenced object.
+Through the restrictions offered by using reference, contracts can provide a great level of security and safety around assets.
+
+PTBs do not currently allow the use of object references that a Move call returns. Input objects to the PTB, objects created by the PTB (like `MakeMoveVec`), or returned from a Move call by value, can be used as references in other Move calls. However, if a Move call were to return a reference, that reference is not usable in any call, limiting significantly certain common patterns in Move.
+
+## Simulate references
+
+The Sui framework includes a [borrow](https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/docs/borrow.md) module that offers a solution to the reference and borrowing problem. The module provides access to an object by value but builds a model that makes it impossible to destroy, transfer, or wrap the object retrieved. The borrow module exposes a `Referent` object that wraps another object (the object you want to reference) and, using the hot potato pattern (via a Borrow instance), allows the wrapped object to be retrieved by value, and within the same transaction, forces the object to be returned to the `Referent`. The Borrow instance guarantees that the object returned is the same that was retrieved.
+
+As an example, consider the following module stub that exposes an object (`Asset`) and a function (`use_asset`) to use that object.
+
+```rust
+module a_module {
+    struct Asset has key, store {
+        … // some data
+    }
+
+    public fun use_asset(asset: &Asset) {
+        …. // some code
+    }
+}
+```
+
+The function `use_asset` takes an immutable reference to the asset (`&Asset`), which is a common pattern in a Move call. 
+
+Now consider another module that uses this asset.
+
+```rust
+module another_module {
+    struct AssetManager has key {
+        asset: Asset,
+    }
+
+    public fun get_asset(manager: &AssetManager): &Asset {
+        &manager.asset
+    }
+}
+```
+
+This module creates an object (`AssetManager`) that references the object (`Asset`) created in the previous module (`a_module`).
+
+You could then write a Move function that creates an object by reference and passes it to the `use_asset` function.  
+
+```rust
+fun do_something(manager: &AssetManager) {
+    let asset = another_module::get_asset(manager);
+    a_module::use_asset(asset);
+}
+```
+
+This function is not valid within a PTB, however, because PTBs do not support a reference returned by a function and passed to another function.
+
+To make this operation valid within a PTB, you would need to include functionality from the borrow module. Consequently, you could change the `another_module` code to the following:
+
+```rust
+module another_module {
+    struct AssetManager has key {
+        asset: Referent<Asset>,
+    }
+
+    public fun get_asset(manager: &mut AssetManager): (Asset, Borrow) {
+        borrow::borrow(&mut manager.asset)
+    }
+
+
+    public fun return_asset(
+        manager: &mut AssetManager,
+        asset: Asset,
+        b: Borrow) {
+            borrow::put_back(&mut manager.asset, asset, b)
+    }
+}
+```
+
+Now the PTB can retrieve the asset, use it in a call to `use_asset`, and return the asset.
+
+## Considerations
+
+Borrow is the key to the guarantees the borrow module offers. The definition of `Borrow` is
+`struct Borrow { ref: address, obj: ID }`
+which makes it such that an instance cannot be dropped and neither saved anywhere, and as such must be consumed in the same transaction that retrieves it (hot potato). Moreover, fields in the Borrow struct make sure that the object returned is for the same `Referent` and the object that was originally held by the `Borrow` instance. In other words, there is no way to either keep the object retrieved or to swap it with another object in a different `Referent`.
+
+Using a reference inside an object is a very explicit and intrusive change. That has to be taken into consideration when designing a solution. Programmable Transaction Block will support references soon, and that is a much more natural and proper pattern for APIs.
+Users must consider the implications of using the borrow module and whether they have a mechanism to later move to a “regular” pattern.
+Finally the Referent model forces the usage of a mutable reference and returns an object by value. Both have significant implications when designing an API. Users must be very careful in what API they offer, and how objects are exposed.
+
+## Example
+
+Given the example above a PTB that wants to call `use_asset` would be written like follows:
+
+```rust
+// initialize the PTB
+const txb = new TransactionBlock();
+// load the assetManager
+const assetManager = txb.object(assetManagerId); 
+// retrieve the asset
+const [asset, borrow] = txb.moveCall({ 
+    target: "0xaddr1::another_module::get_asset",
+    arguments: [ assetManager ],
+});
+// use the asset
+txb.moveCall({ 
+    target: "0xaddr2::a_module::use_asset",
+    arguments: [ asset ],
+});
+// return the asset
+txb.moveCall({ 
+    target: "0xaddr1::another_module::return_asset",
+    arguments: [ assetManager, asset, borrow ],
+});
+...
+```
