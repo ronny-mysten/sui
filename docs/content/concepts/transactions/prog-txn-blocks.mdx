@@ -45,11 +45,13 @@ Input arguments to a PTB are broadly categorized as either objects or pure value
 
 For object inputs, the metadata needed differs depending on the type of [ownership of the object](../object-ownership.mdx). The data for the `ObjectArg` enum follows:
 
-- If the object is owned by an address (or it is immutable), then use `ObjectArg::ImmOrOwnedObject(ObjectID, SequenceNumber, ObjectDigest)`. The triple respectively specifies the object's ID, it's version or sequence number, and the digest of the object's data.
-- If an object is shared, then use `Object::SharedObject { id: ObjectID, initial_shared_version: SequenceNumber, mutable: bool }`. Unlike `ImmOrOwnedObject`, a shared objects version and digest are determined by the network's consensus protocol. The `initial_shared_version` is the version of the object when it was first shared, which is used by consensus when it has not yet seen a transaction with that object. While all shared objects _can_ be mutated, the `mutable` flag indicates whether the object is to be used mutably in this transaction. In the case where the `mutable` flag is set to `false`, the object is read-only, and the system can schedule other read-only transactions in parallel.
-- If the object is owned by another object, as in it was sent to an object's ID via the `TransferObjects` command or the `sui::transfer::transfer` function, then use `ObjectArg::Receiving(ObjectID, SequenceNumber, ObjectDigest)`. The object data is the same as for the `ImmOrOwnedObject` case.
+If the object is owned by an address (or it is immutable), then use `ObjectArg::ImmOrOwnedObject(ObjectID, SequenceNumber, ObjectDigest)`. The triple respectively specifies the object's ID, it's version or sequence number, and the digest of the object's data.
 
-For pure inputs, the only data provided is the BCS (TODO Link) bytes. The bytes are not validated until the type is specified in a transaction command, such as in `MoveCall` or `MakeMoveVec`. Not all Move values can be constructed from BCS bytes. The following types are supported:
+If an object is shared, then use `Object::SharedObject { id: ObjectID, initial_shared_version: SequenceNumber, mutable: bool }`. Unlike `ImmOrOwnedObject`, a shared objects version and digest are determined by the network's consensus protocol. The `initial_shared_version` is the version of the object when it was first shared, which is used by consensus when it has not yet seen a transaction with that object. While all shared objects _can_ be mutated, the `mutable` flag indicates whether the object is to be used mutably in this transaction. In the case where the `mutable` flag is set to `false`, the object is read-only, and the system can schedule other read-only transactions in parallel.
+
+If the object is owned by another object, as in it was sent to an object's ID via the `TransferObjects` command or the `sui::transfer::transfer` function, then use `ObjectArg::Receiving(ObjectID, SequenceNumber, ObjectDigest)`. The object data is the same as for the `ImmOrOwnedObject` case.
+
+For pure inputs, the only data provided is the [BCS](https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/docs/bcs.md) bytes. The bytes are not validated until the type is specified in a transaction command, such as in `MoveCall` or `MakeMoveVec`. Not all Move values can be constructed from BCS bytes. The following types are supported:
 
 - All primitive types:
   - `u8`
@@ -79,11 +81,12 @@ Each transaction command produces a (possibly empty) array of values. The type o
 Each command takes `Argument`s that specify the input or result being used. The usage (by-reference or by-value) is inferred based on the type of the argument and the expected argument of the command. First, examine the structure of the `Argument` enum.
 
 - `Input(u16)` is an input argument, where the `u16` is the index of the input in the input vector. For example, given an input vector of `[Object1, Object2, Pure1, Object3]`, `Object1` is accessed with `Input(0)` and `Pure1` is accessed with `Input(2)`.
-- `GasCoin` is a special input argument representing the object for the `SUI` coin used to pay for gas. It is kept separate from the other inputs because the gas coin is always present in each transaction and has special restrictions (see below) not present for other inputs. Additionally, the gas coin being separate makes its usage explicit, which is helpful for sponsored transactions where the sponsor might not want the sender to use the gas coin for anything other than gas.
+- `GasCoin` is a special input argument representing the object for the `SUI` coin used to pay for gas. It is kept separate from the other inputs because the gas coin is always present in each transaction and has special restrictions (see below) not present for other inputs. Additionally, the gas coin being separate makes its usage explicit, which is helpful for sponsored transactions where the sponsor might not want the sender to use the gas coin for anything other than gas.  
     
-    The gas coin cannot be taken by-value except with the `TransferObjects` command. If you need an owned version of the gas coin, you can first use `SplitCoins` to split off a single coin    
+  The gas coin cannot be taken by-value except with the `TransferObjects` command. If you need an owned version of the gas coin, you can first use `SplitCoins` to split off a single coin.    
     
-    This limitation exists to make it easy for the remaining gas to be returned to the coin at the beginning of execution. In other words, if the gas coin was wrapped or deleted, then there would not be an obvious spot for the excess gas to be returned. See the [Execution section](#execution) for more details.
+  This limitation exists to make it easy for the remaining gas to be returned to the coin at the beginning of execution. In other words, if the gas coin was wrapped or deleted, then there would not be an obvious spot for the excess gas to be returned. See the [Execution section](#execution) for more details.
+
 - `NestedResult(u16, u16)` uses the value from a previous command. The first `u16` is the index of the command in the command vector, and the second `u16` is the index of the result in the result vector of that command. For example, given a command vector of `[MoveCall1, MoveCall2, TransferObjects]` where `MoveCall2` has a result vector of `[Value1, Value2]`, `Value1` would be accessed with `NestedResult(1, 0)` and `Value2` would be accessed with `NestedResult(1, 1)`.
 - `Result(u16)` is a special form of `NestedResult` where `Result(i)` is equivalent to `NestedResult(i, 0)`. However, this will error if the result array at index `i` is empty or has more than one value. The ultimate intention of `Result` is to allow accessing the entire result array, but that is not yet supported. So in general, `NestedResult` should be used instead of `Result`.
 
@@ -97,9 +100,9 @@ At the beginning of execution, the PTB runtime takes the already loaded input ob
 
 The most important thing to note at this stage is the effects on the gas coin. At the beginning of execution, the maximum gas budget (in terms of `SUI`) is withdrawn from the gas coin. Any unused gas is returned to the gas coin at the end of execution, even if the coin has changed owners.
 
-### Executing a command
+### Executing a transaction command
 
-Each command is then executed in order. First, examine the rules around arguments, which are shared by all commands.
+Each transaction command is then executed in order. First, examine the rules around arguments, which are shared by all commands.
 
 #### Arguments
 
@@ -112,31 +115,28 @@ The transaction fails if an argument is used in any form after being moved. Ther
 
 If an argument is copied but does not have the `drop` ability, then the last usage is inferred to be a move. As a result, if an argument has `copy` and does not have `drop`, the last usage _must_ be by value. Otherwise, the transaction will fail because a value without `drop` has not been used.
 
-The borrowing of arguments has other rules to ensure unique safe usage of an argument by reference.
-  - If an argument is mutably borrowed, there must be no outstanding borrows.
-  - If an argument is immutably borrowed, there must be no outstanding _mutable_ borrows. Duplicate immutable borrows are allowed.
-  - If an argument is moved, there must be no outstanding borrows. Moving a borrowed value would make those outstanding borrows unsafe.
-  - If an argument is copied, there must be no outstanding _mutable_ borrows. It is safe and allowed to copy a value that is immutably borrowed.
+The borrowing of arguments has other rules to ensure unique safe usage of an argument by reference. If an argument is:
+  - Mutably borrowed, there must be no outstanding borrows.
+  - Immutably borrowed, there must be no outstanding _mutable_ borrows. Duplicate immutable borrows are allowed.
+  - Moved, there must be no outstanding borrows. Moving a borrowed value would make those outstanding borrows unsafe.
+  - Copied, there must be no outstanding _mutable_ borrows. It is safe and allowed to copy a value that is immutably borrowed.
 
-Object inputs have the type of their object `T` as you might expect. However, for `ObjectArg::Receiving` inputs, the object type `T` is instead wrapped as `sui::transfer::Receiving<T>`. This is because the object is not owned by the sender, but instead by another object. And to prove ownership with that parent object, you call the `sui::transfer::receive` function which removes the wrapper.
+Object inputs have the type of their object `T` as you might expect. However, for `ObjectArg::Receiving` inputs, the object type `T` is instead wrapped as `sui::transfer::Receiving<T>`. This is because the object is not owned by the sender, but instead by another object. And to prove ownership with that parent object, you call the `sui::transfer::receive` function to remove the wrapper.
 
-The `GasCoin` has special restrictions on being used by-value (moved). It can only be used by-value with the `TransferObjects` command.
+The `GasCoin` has special restrictions on being used by-value (moved). You can only use it by-value with the `TransferObjects` command.
 
-Shared objects also have restrictions on being used by-value. These restrictions exist to ensure that at the end of the transaction the shared object is either still shared or has been deleted. A shared object cannot be unshared, i.e. having the owner changed, and it cannot be wrapped.
-  - A shared object marked as not `mutable`, that is it was marked as being used read-only, cannot be used by value.
-  - A shared object cannot be transferred or frozen. These checks are _not_ done dynamically however. Only at the end of the transaction. For example, `TransferObjects` will succeed if passed a shared object, but at the end of execution, the transaction will fail.
-  - A shared object can be wrapped and can become a dynamic field transiently, but by the end of the transaction, it must be re-shared or deleted.
+Shared objects also have restrictions on being used by-value. These restrictions exist to ensure that at the end of the transaction the shared object is either still shared or deleted. A shared object cannot be unshared (having the owner changed) and it cannot be wrapped. A shared object:
+  - Marked as not `mutable` (being used read-only) cannot be used by value.
+  - Cannot be transferred or frozen. These checks are not done dynamically, however, but rather at the end of the transaction only. For example, `TransferObjects` succeeds if passed a shared object, but at the end of execution the transaction fails.
+  - Can be wrapped and can become a dynamic field transiently, but by the end of the transaction it must be re-shared or deleted.
 
-Pure values are not type checked until their usage.
-  - When checking if a pure value has type `T`, it is checked whether `T` is a valid type for a pure value (see the list above). If it is, the bytes are then validated.
-  - A pure value can be used be used with multiple types as long as the bytes are valid for each type. For example, a string could be used as an ASCII string `std::ascii::String` and as a UTF8 string `std::string::String`.
-  - However, once the pure value is mutably borrowed, the type becomes fixed. And all future usages must be with that type.
+Pure values are not type checked until their usage. When checking if a pure value has type `T`, it is checked whether `T` is a valid type for a pure value (see the previous list). If it is, the bytes are then validated. You can use a pure value with multiple types as long as the bytes are valid for each type. For example, you can use a string as an ASCII string `std::ascii::String` and as a UTF8 string `std::string::String`. However, after you mutably borrow the pure value, the type becomes fixed, and all future usages must be with that type.
 
 #### `TransferObjects`
 
 The command has the form `TransferObjects(ObjectArgs, AddressArg)` where `ObjectArgs` is a vector of objects and `AddressArg` is the address the objects are sent to.
 
-- Each argument `ObjectArgs: [Argument]` must be an object. However, the objects do not have the same type.
+- Each argument `ObjectArgs: [Argument]` must be an object, however, the objects do not have the same type.
 - The address argument `AddressArg: Argument` must be an address, which could come from a `Pure` input or a result.
 - All arguments, objects and address, are taken by value.
 - The command does not produce any results (an empty result vector).
@@ -188,17 +188,19 @@ This command has the form `MoveCall(Package, Module, Function, TypeArgs, Args)` 
 - The function `Function: String` is the name of the function being called.
 - The type arguments `TypeArgs: [TypeTag]` are the type arguments to the function being called. They must satisfy the constraints of the type parameters for the function.
 - The arguments `Args: [Argument]` are the arguments to the function being called. The arguments must be valid for the parameters as specified in the function's signature.
-- Unlike the other commands, the usage of the arguments and the number of results are dynamic--in that they both depend on the signature of the Move function being called.
+- Unlike the other commands, the usage of the arguments and the number of results are dynamic in that they both depend on the signature of the Move function being called.
 
 #### `Publish` {#publish}
 
 The command has the form `Publish(ModuleBytes, TransitiveDependencies)` where `ModuleBytes` are the bytes of the module being published and `TransitiveDependencies` is a vector of package Object ID dependencies to link against.
 
-- When the transaction is signed, the network verifies that the `ModuleBytes` are not empty.
-- The module bytes `ModuleBytes: [[u8]]` contain the bytes of the modules being published. Each `[u8]` element is a module.
-- The transitive dependencies `TransitiveDependencies: [ObjectID]` are the Object IDs of the packages that the new package depends on. While each module indicates the packages used as dependencies, the transitive object IDs must be provided to select the version of those packages. In other words, these object IDs are used to select the version of the packages marked as dependencies in the modules.
-- After the modules in the package are verified, the `init` function of each module is called in same order as the module byte vector `ModuleBytes`.
-- The command produces a single result of type `sui::package::UpgradeCap`, which is the upgrade capability for the newly published package.
+When the transaction is signed, the network verifies that the `ModuleBytes` are not empty. The module bytes `ModuleBytes: [[u8]]` contain the bytes of the modules being published with each `[u8]` element is a module.
+
+The transitive dependencies `TransitiveDependencies: [ObjectID]` are the Object IDs of the packages that the new package depends on. While each module indicates the packages used as dependencies, the transitive object IDs must be provided to select the version of those packages. In other words, these object IDs are used to select the version of the packages marked as dependencies in the modules.
+
+After the modules in the package are verified, the `init` function of each module is called in same order as the module byte vector `ModuleBytes`.
+
+The command produces a single result of type `sui::package::UpgradeCap`, which is the upgrade capability for the newly published package.
 
 #### `Upgrade`
 
@@ -216,18 +218,17 @@ The command produces a single result type `sui::package::UpgradeReceipt` which p
 
 At the end of execution, the remaining values are checked and effects for the transaction are calculated.
 
-For inputs, the following checks are done:
+For inputs, the following checks are performed:
   - Any remaining immutable or readonly input objects are skipped since no modifications have been made to them.
   - Any remaining mutable input objects are returned to their original owners--if they were shared they remain shared, if they were owned they remain owned.
   - Any remaining pure input values are dropped. Note that pure input values must have `copy` and `drop` since all permissible types for those values have `copy` and `drop`.
   - For any shared object we must also check that it has only been deleted or re-shared. Any other operation (wrap, transfer, freezing, etc) results in an error.
 
-For results, the following checks are done:
+For results, the following checks are performed:
   - Any remaining result with the `drop` ability is dropped.
   - If the value has `copy` but not `drop`, it's last usage must have been by-value. In that way, it's last usage is treated as a move.
   - Otherwise, an error is given because there is an unused value without `drop`.
 
-Any remaining gas is returned to the gas coin, even if the owner has changed.
-  - Note that since the gas coin can only be taken by-value with `TransferObjects`, it will not have been wrapped or deleted.
+Any remaining gas is returned to the gas coin, even if the owner has changed. Because you can take the gas coin only by-value with `TransferObjects`, it will not have been wrapped or deleted.
 
 The total effects (which contain the created, mutated, and deleted objects) are then passed out of the execution layer and are applied by the Sui network.
