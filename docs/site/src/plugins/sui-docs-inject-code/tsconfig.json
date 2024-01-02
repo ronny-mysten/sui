@@ -2,9 +2,9 @@
   "compilerOptions": {
     "target": "es2017",
     "module": "commonjs",
-    "lib": ["es2017","es2019.array","dom"],
+    "lib": ["es2017", "es2019.array", "dom"],
     "declaration": true,
-    "declarationMap": true,    
+    "declarationMap": true,
     "types": ["node", "@docusaurus/module-type-aliases"],
 
     /* Strict Type-Checking Options */
@@ -29,7 +29,7 @@
 
     /* Advanced Options */
     "resolveJsonModule": true,
-    
+
     /* Plugin*/
     "incremental": true,
     "tsBuildInfoFile": "./lib/.tsbuildinfo",

@@ -1,8 +1,6 @@
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
 /// <reference types="node" />
 interface Loader extends Function {
-  (this: any, source: string): string | Buffer | void | undefined;
+    (this: any, source: string): string | Buffer | void | undefined;
 }
 declare const markdownLoader: Loader;
 export default markdownLoader;

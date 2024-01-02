@@ -101,7 +101,10 @@ const Method = (props) => {
                             <p className="mt-4 font-bold text-xl text-sui-gray-80 dark:text-sui-gray-70">
                               Example
                             </p>
-                            <Examples method={method.name} examples={method.examples} />
+                            <Examples
+                              method={method.name}
+                              examples={method.examples}
+                            />
                           </>
                         )}
                       </div>

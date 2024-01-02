@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { SharedFoldersOption } from './types';
-import fse from 'fs-extra';
-import path from 'path';
+import { SharedFoldersOption } from "./types";
+import fse from "fs-extra";
+import path from "path";
 
 export function cleanCopySharedFolders(
   sharedFolders: SharedFoldersOption,
@@ -18,7 +18,7 @@ export function cleanCopySharedFolders(
 
 export function copySharedFolders(
   sharedFolders: SharedFoldersOption,
-  siteDir: string
+  siteDir: string,
 ): void {
   copyFolders(false, sharedFolders, siteDir);
 }
@@ -26,10 +26,9 @@ export function copySharedFolders(
 function copyFolders(
   cleanFirst: boolean,
   sharedFolders: SharedFoldersOption,
-  siteDir: string
+  siteDir: string,
 ): void {
-
-  const pluginLogPrefix = '[includes] ';
+  const pluginLogPrefix = "[includes] ";
 
   if (!sharedFolders) {
     throw new Error(
@@ -38,7 +37,7 @@ function copyFolders(
   }
 
   // First check if source folders exist
-  sharedFolders.forEach(folderEntry => {
+  sharedFolders.forEach((folderEntry) => {
     const sourceFolder = path.resolve(siteDir, folderEntry.source);
     if (!fse.pathExistsSync(sourceFolder)) {
       throw new Error(
@@ -47,8 +46,8 @@ function copyFolders(
     }
   });
 
-  // Clean folders (if requested) and copy the files 
-  sharedFolders.forEach(folderEntry => {
+  // Clean folders (if requested) and copy the files
+  sharedFolders.forEach((folderEntry) => {
     const sourceFolder = path.resolve(siteDir, folderEntry.source);
     const targetFolder = path.resolve(siteDir, folderEntry.target);
     fse.ensureDirSync(targetFolder);
@@ -56,8 +55,9 @@ function copyFolders(
       console.log(`${pluginLogPrefix}Clean target folder '${targetFolder}'`);
       fse.emptyDirSync(targetFolder);
     }
-    console.log(`${pluginLogPrefix}Copy folder ${sourceFolder} to '${targetFolder}'`);
+    console.log(
+      `${pluginLogPrefix}Copy folder ${sourceFolder} to '${targetFolder}'`,
+    );
     fse.copySync(sourceFolder, targetFolder);
   });
-
 }

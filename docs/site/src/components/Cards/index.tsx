@@ -26,7 +26,7 @@ export function Card(props) {
   }
   let i = Object.entries(docs).find((doc) => doc[0] === h);
   let description = "";
-  if (Array.isArray(i)){
+  if (Array.isArray(i)) {
     description = i[1].description;
   }
 

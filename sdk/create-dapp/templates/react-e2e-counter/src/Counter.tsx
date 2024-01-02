@@ -1,3 +1,6 @@
+// docs::https://docs.sui.io/guides/developer/app-examples/e2e-counter
+// docs::#counter
+// docs::#executeMoveCall
 import {
   useCurrentAccount,
   useSignAndExecuteTransactionBlock,
@@ -14,6 +17,7 @@ export function Counter({ id }: { id: string }) {
   const currentAccount = useCurrentAccount();
   const counterPackageId = useNetworkVariable("counterPackageId");
   const { mutate: signAndExecute } = useSignAndExecuteTransactionBlock();
+  // docs::#executeMoveCall-pause: // ...
   const { data, isPending, error, refetch } = useSuiClientQuery("getObject", {
     id,
     options: {
@@ -21,8 +25,9 @@ export function Counter({ id }: { id: string }) {
       showOwner: true,
     },
   });
-
+  // docs::#executeMoveCall-resume
   const executeMoveCall = (method: "increment" | "reset") => {
+    // docs::#counter-pause: // TODO
     const txb = new TransactionBlock();
 
     if (method === "reset") {
@@ -53,7 +58,9 @@ export function Counter({ id }: { id: string }) {
         },
       },
     );
+    // docs::#counter-resume
   };
+  // docs::/#executeMoveCall
 
   if (isPending) return <Text>Loading...</Text>;
 
@@ -89,3 +96,4 @@ function getCounterFields(data: SuiObjectData) {
 
   return data.content.fields as { value: number; owner: string };
 }
+// docs::/#counter

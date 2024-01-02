@@ -21,7 +21,9 @@ The plugin also supports placeholders in [remarkable-embed](https://www.npmjs.co
 ```
 yarn add docusaurus-plugin-includes
 ```
+
 or
+
 ```
 npm install docusaurus-plugin-includes --save
 ```
@@ -47,7 +49,7 @@ plugins: [
         embeds: [
           {
             key: 'myAwesomePlugin',
-            embedFunction: function(code) { 
+            embedFunction: function(code) {
               return `...`;
             }
           }
@@ -71,7 +73,7 @@ Add the following at the position where another file should be included:
 A real world sample is `{@include: shared/finesse_compatibility.md}`.
 The path is relative from the main docs folder. In the sample above, the included file is located in a subfolder `shared` in the main docs folder.
 
-The included markdown files must be plain markdown files **without** docusaurus headers with tags like `id`and `title`. 
+The included markdown files must be plain markdown files **without** docusaurus headers with tags like `id`and `title`.
 
 Included files are allowed to again include other files. Make sure to avoid endless include loops.
 
@@ -80,6 +82,7 @@ Included files are allowed to again include other files. Make sure to avoid endl
 The shared files must also be located in the main `docs` folder to make sure they are also copied automatically from docusaurus into the `versioned_docs` folder when creating a version. Markdown files shared with other external product documentations must therefore somehow be copied from outside into a subfolder of the main docs folder.
 
 The plugin adds 2 command line commands to automate copying these folder(s).
+
 - `includes:copySharedFolders`: Copy the configured shared folders
 - `includes:cleanCopySharedFolders`: Delete existing target folders first, copySharedFolders
 
@@ -127,7 +130,7 @@ You can configure such placeholder replacements in `docusaurus.config.js` file.
   embeds: [
     {
       key: 'myAwesomePlugin',
-      embedFunction: function(code) { 
+      embedFunction: function(code) {
         return `...`;
       }
     }
@@ -156,16 +159,19 @@ The following sample configuration adds plugin code to embed video files from as
 ```
 
 ### Inject HTML Tags
+
 Inject head and/or body HTML tags to Docusaurus generated HTML.
 
 The following 3 identifiers can be used and they are all optional:
-* headTags
-* preBodyTags
-* postBodyTags
+
+- headTags
+- preBodyTags
+- postBodyTags
 
 See https://docusaurus.io/docs/lifecycle-apis#injecthtmltags for more information.
 
 In the following example a CSS file gets loaded in the head tag and a h1 tag gets added to the body:
+
 ```
   injectedHtmlTags: {
     headTags: [`<link rel="stylesheet" href="https://cdn.example.com/style.css" type="text/css">`],

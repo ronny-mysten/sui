@@ -2,15 +2,15 @@
 title: Entry Functions
 ---
 
-The `entry` modifier allows a function to be called directly from a programmable transaction block, as an "entrypoint" to the module.
+You can directly call a function that includes the `entry` modifier from a programmable transaction block (PTB). For example, the function `entry fun update(foo: &mut Foo, ctx: &TxContext)` includes the `entry` modifier, signalling it's a PTB entry point to the module where it's defined.
 
-When called this way, parameters passed to `entry` functions must be inputs to the transaction block, not the results of previous transactions in that block, and not modified by previous transactions in that block. Entry functions are also only allowed to return types that have `drop`.
+When called this way, the parameters you pass to `entry` functions must be inputs to the transaction block, not the results of previous transactions in that block, and not modified by previous transactions in that block. Entry functions are also allowed to return only types that have `drop`.
 
-These restrictions prevent third parties using the scriptable nature of programmable transaction blocks to bypass the fact that `entry` functions are not otherwise allowed to be called from other modules.
+These restrictions prevent third parties from using the scriptable nature of programmable transaction blocks to bypass the inability to call `entry` functions from other modules.
 
-## `public` vs `entry` functions
+## `public` versus `entry` functions
 
-The `public` modifier also allows a function to be called from a programmable transaction block.  It additionally allows the function to be called from other modules, and does not impose the same restrictions on where the function's parameters can come from and what it can return, so in many cases `public` is the right way to expose your function to the outside world. `entry` is useful if:
+The `public` modifier also allows you to call a function from a programmable transaction block. Additionally, the modifier allows other modules to call the function, and does not impose the same parameter source and return value restrictions on where the function's parameters can come from and what it can return, so in many cases `public` is the right way to expose your function to the outside world. `entry` is useful if:
 
 - You want strong guarantees that your function is not being combined with third-party module functions, in programmable transaction blocks.  The canonical example of this is a swap protocol that does not want to interact with a flash loan provider: If the swap protocol exposes only `entry` functions to perform swaps, it will not be possible to pass in a flash loaned `Coin`, because that coin will be the output of some previous transaction.
 - You do not want the function's signature to appear in your module's ABI.  `public` function signatures must be maintained by upgrades while `entry` function signatures do not.
@@ -19,7 +19,7 @@ It is also possible to create a `public entry` function, which can be called by 
 
 ## Example
 
-```rust
+```move
 module entry_functions::example {
     use sui::object::{Self, UID};
     use sui::transfer;
