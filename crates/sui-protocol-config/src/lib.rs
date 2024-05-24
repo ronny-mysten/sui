@@ -131,6 +131,7 @@ const MAX_PROTOCOL_VERSION: u64 = 47;
 //             Enable resharing at the same initial shared version.
 // Version 47: Use tonic networking for Mysticeti.
 //             Resolve Move abort locations to the package id instead of the runtime module ID.
+//             Enable random beacon in testnet.
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -442,6 +443,12 @@ struct FeatureFlags {
     // Resolve Move abort locations to the package id instead of the runtime module ID.
     #[serde(skip_serializing_if = "is_false")]
     resolve_abort_locations_to_package_id: bool,
+
+    // Enables the use of the Mysticeti committed sub dag digest to the `ConsensusCommitInfo` in checkpoints.
+    // When disabled the default digest is used instead. It's important to have this guarded behind
+    // a flag as it will lead to checkpoint forks.
+    #[serde(skip_serializing_if = "is_false")]
+    mysticeti_use_committed_subdag_digest: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -1331,6 +1338,10 @@ impl ProtocolConfig {
     pub fn resolve_abort_locations_to_package_id(&self) -> bool {
         self.feature_flags.resolve_abort_locations_to_package_id
     }
+
+    pub fn mysticeti_use_committed_subdag_digest(&self) -> bool {
+        self.feature_flags.mysticeti_use_committed_subdag_digest
+    }
 }
 
 #[cfg(not(msim))]
@@ -2219,6 +2230,17 @@ impl ProtocolConfig {
 
                     // Enable resolving abort code IDs to package ID instead of runtime module ID
                     cfg.feature_flags.resolve_abort_locations_to_package_id = true;
+
+                    // Enable random beacon on testnet.
+                    if chain != Chain::Mainnet {
+                        cfg.feature_flags.random_beacon = true;
+                        cfg.random_beacon_reduction_lower_bound = Some(1600);
+                        cfg.random_beacon_dkg_timeout_round = Some(3000);
+                        cfg.random_beacon_min_round_interval_ms = Some(200);
+                    }
+
+                    // Enable the committed sub dag digest inclusion on the commit output
+                    cfg.feature_flags.mysticeti_use_committed_subdag_digest = true;
                 }
                 // Use this template when making changes:
                 //
