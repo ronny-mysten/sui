@@ -1,0 +1,601 @@
+processed 10 tasks
+
+init:
+A: object(0,0)
+
+task 1 'run-graphql'. lines 6-38:
+Response: {
+  "data": {
+    "object": {
+      "asMovePackage": {
+        "coin": {
+          "total_supply": {
+            "name": "total_supply",
+            "visibility": "PUBLIC",
+            "isEntry": false,
+            "typeParameters": [
+              {
+                "constraints": []
+              }
+            ],
+            "parameters": [
+              {
+                "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::coin::TreasuryCap<$0>"
+              }
+            ],
+            "return": [
+              {
+                "repr": "u64"
+              }
+            ]
+          },
+          "join": {
+            "name": "join",
+            "visibility": "PUBLIC",
+            "isEntry": true,
+            "typeParameters": [
+              {
+                "constraints": []
+              }
+            ],
+            "parameters": [
+              {
+                "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<$0>"
+              },
+              {
+                "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<$0>"
+              }
+            ],
+            "return": []
+          }
+        },
+        "sui": {
+          "new": {
+            "name": "new",
+            "visibility": "PRIVATE",
+            "isEntry": false,
+            "typeParameters": [],
+            "parameters": [
+              {
+                "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+              }
+            ],
+            "return": [
+              {
+                "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+
+task 2 'publish'. lines 40-44:
+created: object(2,0), object(2,1)
+mutated: object(0,0)
+gas summary: computation_cost: 1000000, storage_cost: 5183200,  storage_rebate: 0, non_refundable_storage_fee: 0
+
+task 3 'create-checkpoint'. lines 46-46:
+Checkpoint created: 1
+
+task 4 'run-graphql'. lines 48-86:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "nodes": [
+        {
+          "effects": {
+            "objectChanges": {
+              "nodes": [
+                {
+                  "outputState": {
+                    "address": "0x46a771f007d946134328ea085d53e5bc4f3f37f8b472701f95db702f530db55d",
+                    "asMovePackage": null
+                  }
+                },
+                {
+                  "outputState": {
+                    "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                    "asMovePackage": null
+                  }
+                },
+                {
+                  "outputState": {
+                    "address": "0x8c8e07fbe15bb875f397b68f2c5a050b545628c0b976c045629a7fe58ef5a57f",
+                    "asMovePackage": {
+                      "module": {
+                        "function": {
+                          "module": {
+                            "package": {
+                              "address": "0x8c8e07fbe15bb875f397b68f2c5a050b545628c0b976c045629a7fe58ef5a57f"
+                            }
+                          },
+                          "name": "f",
+                          "visibility": "PUBLIC",
+                          "isEntry": false,
+                          "typeParameters": [
+                            {
+                              "constraints": [
+                                "DROP"
+                              ]
+                            }
+                          ],
+                          "parameters": [
+                            {
+                              "repr": "$0"
+                            }
+                          ],
+                          "return": [
+                            {
+                              "repr": "u64"
+                            },
+                            {
+                              "repr": "u64"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+task 5 'upgrade'. lines 88-93:
+created: object(5,0)
+mutated: object(0,0), object(2,1)
+gas summary: computation_cost: 1000000, storage_cost: 5418800,  storage_rebate: 2595780, non_refundable_storage_fee: 26220
+
+task 6 'create-checkpoint'. lines 95-95:
+Checkpoint created: 2
+
+task 7 'run-graphql'. lines 97-136:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "nodes": [
+        {
+          "effects": {
+            "objectChanges": {
+              "nodes": [
+                {
+                  "outputState": {
+                    "address": "0x46a771f007d946134328ea085d53e5bc4f3f37f8b472701f95db702f530db55d",
+                    "asMovePackage": null
+                  }
+                },
+                {
+                  "outputState": {
+                    "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                    "asMovePackage": null
+                  }
+                },
+                {
+                  "outputState": {
+                    "address": "0x7dfc41ad916f1a7403b6d7e08cc3e758c9b5a4186c649c784f15604a13e45d5e",
+                    "asMovePackage": {
+                      "module": {
+                        "f": {
+                          "module": {
+                            "package": {
+                              "address": "0x7dfc41ad916f1a7403b6d7e08cc3e758c9b5a4186c649c784f15604a13e45d5e"
+                            }
+                          },
+                          "name": "f",
+                          "visibility": "PUBLIC",
+                          "isEntry": false,
+                          "typeParameters": [
+                            {
+                              "constraints": [
+                                "DROP"
+                              ]
+                            }
+                          ],
+                          "parameters": [
+                            {
+                              "repr": "$0"
+                            }
+                          ],
+                          "return": [
+                            {
+                              "repr": "u64"
+                            },
+                            {
+                              "repr": "u64"
+                            }
+                          ]
+                        },
+                        "g": {
+                          "module": {
+                            "package": {
+                              "address": "0x7dfc41ad916f1a7403b6d7e08cc3e758c9b5a4186c649c784f15604a13e45d5e"
+                            }
+                          },
+                          "name": "g",
+                          "visibility": "PRIVATE",
+                          "isEntry": true,
+                          "typeParameters": [],
+                          "parameters": [],
+                          "return": [
+                            {
+                              "repr": "u64"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+task 8 'run-graphql'. lines 138-173:
+Response: {
+  "data": {
+    "object": {
+      "asMovePackage": {
+        "module": {
+          "all": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY29uc2Vuc3VzX2NvbW1pdF9wcm9sb2d1ZSIsImMiOjJ9",
+                "node": {
+                  "name": "consensus_commit_prologue",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    },
+                    {
+                      "repr": "u64"
+                    },
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoidGltZXN0YW1wX21zIiwiYyI6Mn0",
+                "node": {
+                  "name": "timestamp_ms",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    }
+                  ],
+                  "return": [
+                    {
+                      "repr": "u64"
+                    }
+                  ]
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "after": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoidGltZXN0YW1wX21zIiwiYyI6Mn0",
+                "node": {
+                  "name": "timestamp_ms",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    }
+                  ],
+                  "return": [
+                    {
+                      "repr": "u64"
+                    }
+                  ]
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": true
+            }
+          },
+          "before": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY29uc2Vuc3VzX2NvbW1pdF9wcm9sb2d1ZSIsImMiOjJ9",
+                "node": {
+                  "name": "consensus_commit_prologue",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    },
+                    {
+                      "repr": "u64"
+                    },
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": true,
+              "hasPreviousPage": false
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+task 9 'run-graphql'. lines 175-246:
+Response: {
+  "data": {
+    "object": {
+      "asMovePackage": {
+        "module": {
+          "prefix": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": true,
+              "hasPreviousPage": true
+            }
+          },
+          "prefixAll": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoidGltZXN0YW1wX21zIiwiYyI6Mn0",
+                "node": {
+                  "name": "timestamp_ms",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    }
+                  ],
+                  "return": [
+                    {
+                      "repr": "u64"
+                    }
+                  ]
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": true
+            }
+          },
+          "prefixExcess": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoidGltZXN0YW1wX21zIiwiYyI6Mn0",
+                "node": {
+                  "name": "timestamp_ms",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    }
+                  ],
+                  "return": [
+                    {
+                      "repr": "u64"
+                    }
+                  ]
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": true
+            }
+          },
+          "suffix": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": true,
+              "hasPreviousPage": true
+            }
+          },
+          "suffixAll": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY29uc2Vuc3VzX2NvbW1pdF9wcm9sb2d1ZSIsImMiOjJ9",
+                "node": {
+                  "name": "consensus_commit_prologue",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    },
+                    {
+                      "repr": "u64"
+                    },
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": true,
+              "hasPreviousPage": false
+            }
+          },
+          "suffixExcess": {
+            "edges": [
+              {
+                "cursor": "eyJuIjoiY29uc2Vuc3VzX2NvbW1pdF9wcm9sb2d1ZSIsImMiOjJ9",
+                "node": {
+                  "name": "consensus_commit_prologue",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+                    },
+                    {
+                      "repr": "u64"
+                    },
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              },
+              {
+                "cursor": "eyJuIjoiY3JlYXRlIiwiYyI6Mn0",
+                "node": {
+                  "name": "create",
+                  "typeParameters": [],
+                  "parameters": [
+                    {
+                      "repr": "&0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                    }
+                  ],
+                  "return": []
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": true,
+              "hasPreviousPage": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1158 @@
+processed 21 tasks
+
+init:
+A: object(0,0)
+
+task 1 'publish'. lines 6-16:
+created: object(1,0), object(1,1)
+mutated: object(0,0)
+gas summary: computation_cost: 1000000, storage_cost: 6315600,  storage_rebate: 0, non_refundable_storage_fee: 0
+
+task 2 'create-checkpoint'. lines 18-18:
+Checkpoint created: 1
+
+task 3 'run-graphql'. lines 20-199:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "nodes": [
+        {
+          "digest": "Cjz2ovHTvaq3WmaRVbgqwQ4XSHrhxraV9Q9nC9zpHBTV",
+          "sender": {
+            "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+          },
+          "signatures": [
+            "AK2xMPUizhHQ2r81Rm44j33Fi1iJttpHrXc7wVe1Vsfor0swcjcfgQi6giK13h36yV84d16md4jQpaovDKelew9/UUY663bYjcm3XmNyULIgxJz1t5Z9vxfB+fp8WUoJKA=="
+          ],
+          "gasInput": {
+            "gasSponsor": {
+              "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+            },
+            "gasPayment": {
+              "nodes": [
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+                }
+              ]
+            },
+            "gasPrice": "1000",
+            "gasBudget": "5000000000"
+          },
+          "kind": {
+            "__typename": "ProgrammableTransactionBlock",
+            "inputs": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjoxfQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "/MyaQhu7E8GmahqpjwrXUCnt6UhXd5xpFbRPlAaLkh4="
+                  }
+                }
+              ]
+            },
+            "transactions": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjoxfQ",
+                  "node": {
+                    "__typename": "PublishTransaction",
+                    "modules": [
+                      "oRzrCwYAAAAIAQAGAgYMAxIKBRwRBy0wCF1ACp0BCQymAQ8ABAEGAQcAAAwAAQIEAAIBAgAABQABAAEFAwQAAgoDBwgCAQgAAAEHCAIBCAEDRm9vCVR4Q29udGV4dANVSUQCaWQBbQNuZXcGb2JqZWN0CnR4X2NvbnRleHQCeHMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAICAwgBCAoDAAEAAAIFCwERAQsAEgACAA=="
+                    ],
+                    "dependencies": [
+                      "0x0000000000000000000000000000000000000000000000000000000000000001",
+                      "0x0000000000000000000000000000000000000000000000000000000000000002"
+                    ]
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoxLCJjIjoxfQ",
+                  "node": {
+                    "__typename": "TransferObjectsTransaction",
+                    "inputs": [
+                      {
+                        "__typename": "Result",
+                        "cmd": 0,
+                        "ix": null
+                      }
+                    ],
+                    "address": {
+                      "__typename": "Input",
+                      "ix": 0
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "effects": {
+            "status": "SUCCESS",
+            "errors": null,
+            "lamportVersion": 2,
+            "dependencies": {
+              "nodes": [
+                {
+                  "digest": "9EVz5gpxZVC5EBJ5UxPwKHkuutHzzcMYbvmVNGHoUfh2"
+                }
+              ]
+            },
+            "balanceChanges": {
+              "nodes": [
+                {
+                  "owner": {
+                    "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+                  },
+                  "amount": "-7315600",
+                  "coinType": {
+                    "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+                  }
+                }
+              ]
+            },
+            "objectChanges": {
+              "nodes": [
+                {
+                  "address": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0",
+                  "idCreated": true,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0",
+                    "digest": "4e6Qe5dE5aQ9tNBbjgG3v8WMs2Yc53nyhXyjGPZiwX4E"
+                  }
+                },
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                  "idCreated": false,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                    "digest": "JAn6qSofG68mnAVYuuT41Esgz9XKp5fMvUYGu6UDkT1L"
+                  }
+                },
+                {
+                  "address": "0x7850a22947016cc77337bc39d530b5cd7783e62b198dbd322ac985f42fd7d4f1",
+                  "idCreated": true,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x7850a22947016cc77337bc39d530b5cd7783e62b198dbd322ac985f42fd7d4f1",
+                    "digest": "7L7XLZ3U8evdrA8p496ogwRG7te2P59CPNFLh5CRFmE"
+                  }
+                }
+              ]
+            },
+            "gasEffects": {
+              "gasObject": {
+                "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+              },
+              "gasSummary": {
+                "computationCost": "1000000",
+                "storageCost": "6315600",
+                "storageRebate": "0",
+                "nonRefundableStorageFee": "0"
+              }
+            },
+            "timestamp": "1970-01-01T00:00:00Z",
+            "epoch": {
+              "epochId": 0
+            },
+            "checkpoint": {
+              "sequenceNumber": 1
+            },
+            "transactionBlock": {
+              "digest": "Cjz2ovHTvaq3WmaRVbgqwQ4XSHrhxraV9Q9nC9zpHBTV"
+            }
+          },
+          "expiration": null
+        }
+      ]
+    }
+  }
+}
+
+task 4 'upgrade'. lines 201-216:
+created: object(4,0)
+mutated: object(0,0), object(1,1)
+gas summary: computation_cost: 1000000, storage_cost: 6589200,  storage_rebate: 2595780, non_refundable_storage_fee: 26220
+
+task 5 'create-checkpoint'. lines 218-218:
+Checkpoint created: 2
+
+task 6 'run-graphql'. lines 220-399:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "nodes": [
+        {
+          "digest": "BBN7rJL3yeNbvwVxxGm7qU3Ju4YoBJqvbUpA8k8Eumb7",
+          "sender": {
+            "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+          },
+          "signatures": [
+            "AB8RpQmUyaawNadNbvfXuBbY51oe+NTYAAAS5GciqMjGuZXXd0sZ5AwL3KJc2KcGEg2eBTeFBZpn0Onqslgwdgp/UUY663bYjcm3XmNyULIgxJz1t5Z9vxfB+fp8WUoJKA=="
+          ],
+          "gasInput": {
+            "gasSponsor": {
+              "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+            },
+            "gasPayment": {
+              "nodes": [
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+                }
+              ]
+            },
+            "gasPrice": "1000",
+            "gasBudget": "5000000000"
+          },
+          "kind": {
+            "__typename": "ProgrammableTransactionBlock",
+            "inputs": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjoyfQ",
+                  "node": {
+                    "__typename": "OwnedOrImmutable",
+                    "address": "0x7850a22947016cc77337bc39d530b5cd7783e62b198dbd322ac985f42fd7d4f1",
+                    "version": 2,
+                    "digest": "7L7XLZ3U8evdrA8p496ogwRG7te2P59CPNFLh5CRFmE",
+                    "object": {
+                      "address": "0x7850a22947016cc77337bc39d530b5cd7783e62b198dbd322ac985f42fd7d4f1",
+                      "version": 2,
+                      "digest": "7L7XLZ3U8evdrA8p496ogwRG7te2P59CPNFLh5CRFmE",
+                      "asMoveObject": {
+                        "contents": {
+                          "type": {
+                            "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::package::UpgradeCap"
+                          },
+                          "json": {
+                            "id": "0x7850a22947016cc77337bc39d530b5cd7783e62b198dbd322ac985f42fd7d4f1",
+                            "package": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0",
+                            "version": "1",
+                            "policy": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoxLCJjIjoyfQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "AA=="
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoyLCJjIjoyfQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "IKtSxFg0BLyRn8vrtIRqeqpsihVPvPFxPFBg5s0K+UqS"
+                  }
+                }
+              ]
+            },
+            "transactions": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjoyfQ",
+                  "node": {
+                    "__typename": "MoveCallTransaction",
+                    "package": "0x0000000000000000000000000000000000000000000000000000000000000002",
+                    "module": "package",
+                    "functionName": "authorize_upgrade",
+                    "typeArguments": [],
+                    "arguments": [
+                      {
+                        "__typename": "Input",
+                        "ix": 0
+                      },
+                      {
+                        "__typename": "Input",
+                        "ix": 1
+                      },
+                      {
+                        "__typename": "Input",
+                        "ix": 2
+                      }
+                    ],
+                    "function": {
+                      "isEntry": false,
+                      "typeParameters": [],
+                      "parameters": [
+                        {
+                          "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::package::UpgradeCap"
+                        },
+                        {
+                          "repr": "u8"
+                        },
+                        {
+                          "repr": "vector<u8>"
+                        }
+                      ],
+                      "return": [
+                        {
+                          "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::package::UpgradeTicket"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoxLCJjIjoyfQ",
+                  "node": {
+                    "__typename": "UpgradeTransaction",
+                    "modules": [
+                      "oRzrCwYAAAAIAQAGAgYMAxIUBSYRBzc8CHNACrMBCQy8AR0ABgEIAQkAAAwAAQIEAAIBAgAABwABAAADAQIAAQQEAgABBwMEAAIKAwcIAgEIAAABBwgCAQgBA0ZvbwlUeENvbnRleHQDVUlEBGJ1cm4GZGVsZXRlAmlkAW0DbmV3Bm9iamVjdAp0eF9jb250ZXh0AnhzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgACAgUIAQoKAwABAAACBQsBEQMLABIAAgEBAAACBQsAEwABEQICAA=="
+                    ],
+                    "dependencies": [
+                      "0x0000000000000000000000000000000000000000000000000000000000000001",
+                      "0x0000000000000000000000000000000000000000000000000000000000000002"
+                    ],
+                    "currentPackage": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0",
+                    "upgradeTicket": {
+                      "__typename": "Result",
+                      "cmd": 0,
+                      "ix": null
+                    }
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoyLCJjIjoyfQ",
+                  "node": {
+                    "__typename": "MoveCallTransaction",
+                    "package": "0x0000000000000000000000000000000000000000000000000000000000000002",
+                    "module": "package",
+                    "functionName": "commit_upgrade",
+                    "typeArguments": [],
+                    "arguments": [
+                      {
+                        "__typename": "Input",
+                        "ix": 0
+                      },
+                      {
+                        "__typename": "Result",
+                        "cmd": 1,
+                        "ix": null
+                      }
+                    ],
+                    "function": {
+                      "isEntry": false,
+                      "typeParameters": [],
+                      "parameters": [
+                        {
+                          "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::package::UpgradeCap"
+                        },
+                        {
+                          "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::package::UpgradeReceipt"
+                        }
+                      ],
+                      "return": []
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "effects": {
+            "status": "SUCCESS",
+            "errors": null,
+            "lamportVersion": 3,
+            "dependencies": {
+              "nodes": [
+                {
+                  "digest": "9EVz5gpxZVC5EBJ5UxPwKHkuutHzzcMYbvmVNGHoUfh2"
+                },
+                {
+                  "digest": "Cjz2ovHTvaq3WmaRVbgqwQ4XSHrhxraV9Q9nC9zpHBTV"
+                }
+              ]
+            },
+            "balanceChanges": {
+              "nodes": [
+                {
+                  "owner": {
+                    "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+                  },
+                  "amount": "-4993420",
+                  "coinType": {
+                    "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+                  }
+                }
+              ]
+            },
+            "objectChanges": {
+              "nodes": [
+                {
+                  "address": "0x234f00adb95ef704f7c7dae238ca96bdca77cb9b8e6d38b0d93c34e33c1bae5c",
+                  "idCreated": true,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x234f00adb95ef704f7c7dae238ca96bdca77cb9b8e6d38b0d93c34e33c1bae5c",
+                    "digest": "B4yM4kX4jKFH3neMNwvEyZKX8hvcjwUAjcxDVpLtuByk"
+                  }
+                },
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                  "idCreated": false,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                    "digest": "3tuGGY894CULXAK2UarwgQis71Vune5KGRB6RwdrpwsY"
+                  }
+                },
+                {
+                  "address": "0x7850a22947016cc77337bc39d530b5cd7783e62b198dbd322ac985f42fd7d4f1",
+                  "idCreated": false,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x7850a22947016cc77337bc39d530b5cd7783e62b198dbd322ac985f42fd7d4f1",
+                    "digest": "4xLAqZWhzxBB24LDfGyweoN9CoW6a7DazkB3wuzbyFNF"
+                  }
+                }
+              ]
+            },
+            "gasEffects": {
+              "gasObject": {
+                "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+              },
+              "gasSummary": {
+                "computationCost": "1000000",
+                "storageCost": "6589200",
+                "storageRebate": "2595780",
+                "nonRefundableStorageFee": "26220"
+              }
+            },
+            "timestamp": "1970-01-01T00:00:00Z",
+            "epoch": {
+              "epochId": 0
+            },
+            "checkpoint": {
+              "sequenceNumber": 2
+            },
+            "transactionBlock": {
+              "digest": "BBN7rJL3yeNbvwVxxGm7qU3Ju4YoBJqvbUpA8k8Eumb7"
+            }
+          },
+          "expiration": null
+        }
+      ]
+    }
+  }
+}
+
+task 7 'programmable'. lines 401-404:
+created: object(7,0)
+mutated: object(0,0)
+gas summary: computation_cost: 1000000, storage_cost: 2280000,  storage_rebate: 978120, non_refundable_storage_fee: 9880
+
+task 8 'programmable'. lines 406-415:
+created: object(8,0), object(8,1)
+mutated: object(0,0)
+gas summary: computation_cost: 1000000, storage_cost: 3328800,  storage_rebate: 978120, non_refundable_storage_fee: 9880
+
+task 9 'create-checkpoint'. lines 417-417:
+Checkpoint created: 3
+
+task 10 'run-graphql'. lines 419-607:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "nodes": [
+        {
+          "digest": "G7fgZf3dgEmw47gHeMJSun3bug4ZrEG5ZiRyTRX8tYjE",
+          "sender": {
+            "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+          },
+          "signatures": [
+            "AE6P3EgItYUKWQjpTHP8n/6p0P40BqLWoO/Xs7Hlt7YfBBp0CDphnBrKP4Zpe+M5CKQr1KRzOpMmEvK2jqys4wF/UUY663bYjcm3XmNyULIgxJz1t5Z9vxfB+fp8WUoJKA=="
+          ],
+          "gasInput": {
+            "gasSponsor": {
+              "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+            },
+            "gasPayment": {
+              "nodes": [
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+                }
+              ]
+            },
+            "gasPrice": "1000",
+            "gasBudget": "5000000000"
+          },
+          "kind": {
+            "__typename": "ProgrammableTransactionBlock",
+            "inputs": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjozfQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "KgAAAAAAAAA="
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoxLCJjIjozfQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "KwAAAAAAAAA="
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoyLCJjIjozfQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "6AMAAAAAAAA="
+                  }
+                },
+                {
+                  "cursor": "eyJpIjozLCJjIjozfQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "/MyaQhu7E8GmahqpjwrXUCnt6UhXd5xpFbRPlAaLkh4="
+                  }
+                }
+              ]
+            },
+            "transactions": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjozfQ",
+                  "node": {
+                    "__typename": "MakeMoveVecTransaction",
+                    "type": {
+                      "repr": "u64"
+                    },
+                    "elements": [
+                      {
+                        "__typename": "Input",
+                        "ix": 0
+                      },
+                      {
+                        "__typename": "Input",
+                        "ix": 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoxLCJjIjozfQ",
+                  "node": {
+                    "__typename": "MakeMoveVecTransaction",
+                    "type": {
+                      "repr": "u64"
+                    },
+                    "elements": []
+                  }
+                },
+                {
+                  "cursor": "eyJpIjoyLCJjIjozfQ",
+                  "node": {
+                    "__typename": "SplitCoinsTransaction",
+                    "coin": {
+                      "__typename": "GasCoin"
+                    },
+                    "amounts": [
+                      {
+                        "__typename": "Input",
+                        "ix": 2
+                      },
+                      {
+                        "__typename": "Input",
+                        "ix": 2
+                      }
+                    ]
+                  }
+                },
+                {
+                  "cursor": "eyJpIjozLCJjIjozfQ",
+                  "node": {
+                    "__typename": "MoveCallTransaction",
+                    "package": "0x234f00adb95ef704f7c7dae238ca96bdca77cb9b8e6d38b0d93c34e33c1bae5c",
+                    "module": "m",
+                    "functionName": "new",
+                    "typeArguments": [],
+                    "arguments": [
+                      {
+                        "__typename": "Result",
+                        "cmd": 0,
+                        "ix": null
+                      }
+                    ],
+                    "function": {
+                      "isEntry": false,
+                      "typeParameters": [],
+                      "parameters": [
+                        {
+                          "repr": "vector<u64>"
+                        },
+                        {
+                          "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                        }
+                      ],
+                      "return": [
+                        {
+                          "repr": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0::m::Foo"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "cursor": "eyJpIjo0LCJjIjozfQ",
+                  "node": {
+                    "__typename": "TransferObjectsTransaction",
+                    "inputs": [
+                      {
+                        "__typename": "Result",
+                        "cmd": 3,
+                        "ix": null
+                      }
+                    ],
+                    "address": {
+                      "__typename": "Input",
+                      "ix": 3
+                    }
+                  }
+                },
+                {
+                  "cursor": "eyJpIjo1LCJjIjozfQ",
+                  "node": {
+                    "__typename": "MoveCallTransaction",
+                    "package": "0x234f00adb95ef704f7c7dae238ca96bdca77cb9b8e6d38b0d93c34e33c1bae5c",
+                    "module": "m",
+                    "functionName": "new",
+                    "typeArguments": [],
+                    "arguments": [
+                      {
+                        "__typename": "Result",
+                        "cmd": 1,
+                        "ix": null
+                      }
+                    ],
+                    "function": {
+                      "isEntry": false,
+                      "typeParameters": [],
+                      "parameters": [
+                        {
+                          "repr": "vector<u64>"
+                        },
+                        {
+                          "repr": "&mut 0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+                        }
+                      ],
+                      "return": [
+                        {
+                          "repr": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0::m::Foo"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "cursor": "eyJpIjo2LCJjIjozfQ",
+                  "node": {
+                    "__typename": "MoveCallTransaction",
+                    "package": "0x234f00adb95ef704f7c7dae238ca96bdca77cb9b8e6d38b0d93c34e33c1bae5c",
+                    "module": "m",
+                    "functionName": "burn",
+                    "typeArguments": [],
+                    "arguments": [
+                      {
+                        "__typename": "Result",
+                        "cmd": 5,
+                        "ix": null
+                      }
+                    ],
+                    "function": {
+                      "isEntry": false,
+                      "typeParameters": [],
+                      "parameters": [
+                        {
+                          "repr": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0::m::Foo"
+                        }
+                      ],
+                      "return": []
+                    }
+                  }
+                },
+                {
+                  "cursor": "eyJpIjo3LCJjIjozfQ",
+                  "node": {
+                    "__typename": "MergeCoinsTransaction",
+                    "coin": {
+                      "__typename": "Result",
+                      "cmd": 2,
+                      "ix": 0
+                    },
+                    "coins": [
+                      {
+                        "__typename": "Result",
+                        "cmd": 2,
+                        "ix": 1
+                      }
+                    ]
+                  }
+                },
+                {
+                  "cursor": "eyJpIjo4LCJjIjozfQ",
+                  "node": {
+                    "__typename": "TransferObjectsTransaction",
+                    "inputs": [
+                      {
+                        "__typename": "Result",
+                        "cmd": 2,
+                        "ix": 0
+                      }
+                    ],
+                    "address": {
+                      "__typename": "Input",
+                      "ix": 3
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "effects": {
+            "status": "SUCCESS",
+            "errors": null,
+            "lamportVersion": 5,
+            "dependencies": {
+              "nodes": [
+                {
+                  "digest": "4nMeJAb4U1PvxVyRPZdNZPDYqGnjPrWUcEgDg1VwPJGN"
+                },
+                {
+                  "digest": "BBN7rJL3yeNbvwVxxGm7qU3Ju4YoBJqvbUpA8k8Eumb7"
+                }
+              ]
+            },
+            "balanceChanges": {
+              "nodes": [
+                {
+                  "owner": {
+                    "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+                  },
+                  "amount": "-3350680",
+                  "coinType": {
+                    "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+                  }
+                }
+              ]
+            },
+            "objectChanges": {
+              "nodes": [
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                  "idCreated": false,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                    "digest": "HWEAntegWMmvbBEME44shxcXUaGsTozDLGuNZEeqRDsX",
+                    "asMoveObject": {
+                      "contents": {
+                        "type": {
+                          "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>"
+                        },
+                        "json": {
+                          "id": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                          "balance": {
+                            "value": "299999982036420"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "address": "0xb5c74506acf120e4d7f48a02e031c26bf1a0b8137a187cc313396865199b965f",
+                  "idCreated": true,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0xb5c74506acf120e4d7f48a02e031c26bf1a0b8137a187cc313396865199b965f",
+                    "digest": "PKhPAqwL1wEkghZQZydnMNHyKeGGEKBByB6PwXW8rLi",
+                    "asMoveObject": {
+                      "contents": {
+                        "type": {
+                          "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>"
+                        },
+                        "json": {
+                          "id": "0xb5c74506acf120e4d7f48a02e031c26bf1a0b8137a187cc313396865199b965f",
+                          "balance": {
+                            "value": "2000"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "address": "0xe0d0f64d06e3f81b146855a79175956b428adada01fb3172d387496dc4bb4548",
+                  "idCreated": true,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0xe0d0f64d06e3f81b146855a79175956b428adada01fb3172d387496dc4bb4548",
+                    "digest": "J2763QWV1Lxr9VMjfe26G5tiS7NyUrCdzsW5xKdshDKe",
+                    "asMoveObject": {
+                      "contents": {
+                        "type": {
+                          "repr": "0x394e23703ce4a79f76f219ec73e6a0a054c62fe744d6b4a474c495b2033a98e0::m::Foo"
+                        },
+                        "json": {
+                          "id": "0xe0d0f64d06e3f81b146855a79175956b428adada01fb3172d387496dc4bb4548",
+                          "xs": [
+                            "42",
+                            "43"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "gasEffects": {
+              "gasObject": {
+                "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+              },
+              "gasSummary": {
+                "computationCost": "1000000",
+                "storageCost": "3328800",
+                "storageRebate": "978120",
+                "nonRefundableStorageFee": "9880"
+              }
+            },
+            "timestamp": "1970-01-01T00:00:00Z",
+            "epoch": {
+              "epochId": 0
+            },
+            "checkpoint": {
+              "sequenceNumber": 3
+            },
+            "transactionBlock": {
+              "digest": "G7fgZf3dgEmw47gHeMJSun3bug4ZrEG5ZiRyTRX8tYjE"
+            }
+          },
+          "expiration": null
+        }
+      ]
+    }
+  }
+}
+
+task 11 'programmable'. lines 609-610:
+Error: Transaction Effects Status: Unused result without the drop ability. Command result 0, return value 0
+Execution Error: ExecutionError: ExecutionError { inner: ExecutionErrorInner { kind: UnusedValueWithoutDrop { result_idx: 0, secondary_idx: 0 }, source: None, command: None } }
+
+task 12 'create-checkpoint'. lines 612-612:
+Checkpoint created: 4
+
+task 13 'run-graphql'. lines 614-793:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "nodes": [
+        {
+          "digest": "GiPTNR2GnbBBRQH6v9ewBXPdLXgBAe3SVhfXA7nMbLND",
+          "sender": {
+            "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+          },
+          "signatures": [
+            "AD6gy7xrnNCY1j5Fgo8zU2CT4fPaEgrtkcjUbK/GBAY+gI6eIwIbQhimyAXQS7QSWQVZNxqlI/i4dtVr9jfhcwR/UUY663bYjcm3XmNyULIgxJz1t5Z9vxfB+fp8WUoJKA=="
+          ],
+          "gasInput": {
+            "gasSponsor": {
+              "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+            },
+            "gasPayment": {
+              "nodes": [
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+                }
+              ]
+            },
+            "gasPrice": "1000",
+            "gasBudget": "5000000000"
+          },
+          "kind": {
+            "__typename": "ProgrammableTransactionBlock",
+            "inputs": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjo0fQ",
+                  "node": {
+                    "__typename": "Pure",
+                    "bytes": "6AMAAAAAAAA="
+                  }
+                }
+              ]
+            },
+            "transactions": {
+              "edges": [
+                {
+                  "cursor": "eyJpIjowLCJjIjo0fQ",
+                  "node": {
+                    "__typename": "SplitCoinsTransaction",
+                    "coin": {
+                      "__typename": "GasCoin"
+                    },
+                    "amounts": [
+                      {
+                        "__typename": "Input",
+                        "ix": 0
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "effects": {
+            "status": "FAILURE",
+            "errors": "Unused result without the drop ability. Command result 0, return value 0",
+            "lamportVersion": 6,
+            "dependencies": {
+              "nodes": [
+                {
+                  "digest": "G7fgZf3dgEmw47gHeMJSun3bug4ZrEG5ZiRyTRX8tYjE"
+                }
+              ]
+            },
+            "balanceChanges": {
+              "nodes": [
+                {
+                  "owner": {
+                    "address": "0xfccc9a421bbb13c1a66a1aa98f0ad75029ede94857779c6915b44f94068b921e"
+                  },
+                  "amount": "-1009880",
+                  "coinType": {
+                    "repr": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+                  }
+                }
+              ]
+            },
+            "objectChanges": {
+              "nodes": [
+                {
+                  "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                  "idCreated": false,
+                  "idDeleted": false,
+                  "outputState": {
+                    "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b",
+                    "digest": "Dgzj17sx4mvYYJsYsUUKAXSmhSk7vSBRCnsenQxfcyvC"
+                  }
+                }
+              ]
+            },
+            "gasEffects": {
+              "gasObject": {
+                "address": "0x4b27ffca3cc9a14d591c7082de189912cc0be6bbb6b405dab167a765372ac17b"
+              },
+              "gasSummary": {
+                "computationCost": "1000000",
+                "storageCost": "988000",
+                "storageRebate": "978120",
+                "nonRefundableStorageFee": "9880"
+              }
+            },
+            "timestamp": "1970-01-01T00:00:00Z",
+            "epoch": {
+              "epochId": 0
+            },
+            "checkpoint": {
+              "sequenceNumber": 4
+            },
+            "transactionBlock": {
+              "digest": "GiPTNR2GnbBBRQH6v9ewBXPdLXgBAe3SVhfXA7nMbLND"
+            }
+          },
+          "expiration": null
+        }
+      ]
+    }
+  }
+}
+
+task 14 'run-graphql'. lines 795-805:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "edges": [
+        {
+          "cursor": "eyJjIjo0LCJ0IjowLCJ0YyI6MH0",
+          "node": {
+            "kind": {
+              "__typename": "GenesisTransaction"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0IjoxLCJ0YyI6MX0",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0IjoyLCJ0YyI6Mn0",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0IjozLCJ0YyI6M30",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0Ijo0LCJ0YyI6M30",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0Ijo1LCJ0YyI6NH0",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+task 15 'run-graphql'. lines 807-817:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "edges": [
+        {
+          "cursor": "eyJjIjo0LCJ0IjowLCJ0YyI6MH0",
+          "node": {
+            "kind": {
+              "__typename": "GenesisTransaction"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+task 16 'run-graphql'. lines 819-829:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "edges": [
+        {
+          "cursor": "eyJjIjo0LCJ0IjoxLCJ0YyI6MX0",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0IjoyLCJ0YyI6Mn0",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0IjozLCJ0YyI6M30",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0Ijo0LCJ0YyI6M30",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0Ijo1LCJ0YyI6NH0",
+          "node": {
+            "kind": {
+              "__typename": "ProgrammableTransactionBlock"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+task 17 'run-graphql'. lines 831-838:
+Response: {
+  "data": {
+    "address": {
+      "transactionBlocks": {
+        "nodes": []
+      }
+    }
+  }
+}
+
+task 18 'run-graphql'. lines 840-845:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "edges": [
+        {
+          "cursor": "eyJjIjo0LCJ0IjoyLCJ0YyI6Mn0"
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0IjozLCJ0YyI6M30"
+        }
+      ]
+    }
+  }
+}
+
+task 19 'run-graphql'. lines 847-852:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "edges": [
+        {
+          "cursor": "eyJjIjo0LCJ0IjozLCJ0YyI6M30"
+        },
+        {
+          "cursor": "eyJjIjo0LCJ0Ijo0LCJ0YyI6M30"
+        }
+      ]
+    }
+  }
+}
+
+task 20 'run-graphql'. lines 854-864:
+Response: {
+  "data": {
+    "transactionBlocks": {
+      "edges": [
+        {
+          "cursor": "eyJjIjo0LCJ0IjozLCJ0YyI6M30"
+        }
+      ]
+    }
+  }
+}
