@@ -7,6 +7,8 @@ import Layout from "@theme/Layout";
 import Link from "@docusaurus/Link";
 import styles from "./index.module.css";
 
+import { VersionList } from "../components/Versions";
+
 export default function Home() {
   const HomeCard = (props) => {
     const { title, children } = props;
@@ -67,7 +69,7 @@ export default function Home() {
               Move
             </Link>
           </HomeCard>
-          <HomeCard title="Validators and Node operators">
+          <HomeCard title="Validators and node operators">
             <Link
               className={styles.cardLink}
               to="./guides/operator/validator-config"
@@ -105,22 +107,8 @@ export default function Home() {
               Rust SDK (GitHub)
             </Link>
           </HomeCard>
-          <HomeCard title="Resources" aux>
-            <Link
-              className={styles.cardLink}
-              to="https://sui.directory/?_project_type=api%2Cdeveloper-tools%2Cinfrastructure%2Csdk"
-            >
-              Sui ecosystem directory
-            </Link>
-            <Link className={styles.cardLink} to="https://blog.sui.io/">
-              Sui blog
-            </Link>
-            <Link
-              className={styles.cardLink}
-              to="guides/developer/dev-cheat-sheet"
-            >
-              Sui dev cheat sheet
-            </Link>
+          <HomeCard title="Current Sui network versions" aux>
+            <VersionList></VersionList>
           </HomeCard>
           <HomeCardCTA>
             <Link

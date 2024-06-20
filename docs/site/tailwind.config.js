@@ -37,6 +37,7 @@ module.exports = {
         "sui-warning-light": "var(--sui-warning-light)",
         "sui-code": "var(--sui-code)",
         "sui-gray": {
+          11: "var(--sui-gray)",
           35: "var(--sui-gray-35)",
           40: "var(--sui-gray-40)",
           45: "var(--sui-gray-45)",
