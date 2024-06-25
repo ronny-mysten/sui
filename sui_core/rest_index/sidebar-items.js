@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["CoinIndexInfo","CoinIndexKey","DynamicFieldIndexInfo","DynamicFieldKey","IndexStoreTablesConfigurator","IndexStoreTablesReadOnly","OwnerIndexInfo","OwnerIndexKey","RestIndexStore","TransactionInfo"]};
