@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p crates/sui-rpc-api/proto
           protoc \
-            --proto_path=crates/sui-rpc-api/proto/google/protobuf \
+            --proto_path=./crates/sui-rpc-api/proto/google/protobuf \
             --doc_out=json,crates/sui-rpc-api/proto/documentation.json:. \
             crates/sui-rpc-api/proto/**/*.proto
 
