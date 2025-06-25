@@ -33,10 +33,13 @@ jobs:
       - name: Generate documentation.json
         run: |
           mkdir -p crates/sui-rpc-api/proto
+          
+          PROTO_FILES=$(find crates/sui-rpc-api/proto -name "*.proto")
+
           protoc \
-            --proto_path=./crates/sui-rpc-api/proto/google/protobuf \
-            --doc_out=json,crates/sui-rpc-api/proto/documentation.json:. \
-            crates/sui-rpc-api/proto/**/*.proto
+          --proto_path=crates/sui-rpc-api/proto/google/protobuf \
+          --doc_out=json,crates/sui-rpc-api/proto/documentation.json:. \
+          $PROTO_FILES
 
       - name: Check for changes
         id: git-diff
