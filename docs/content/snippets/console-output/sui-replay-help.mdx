@@ -22,6 +22,10 @@ Options:
       --overwrite                    Whether existing artifacts that were generated from a previous
                                      replay of the transaction should be overwritten or an error
                                      raised if they already exist
+  -n, --node <NODE>                  Network or GraphQL URL to replay against. Accepts `mainnet`,
+                                     `testnet`, or a full GraphQL URL (e.g. for devnet or a
+                                     self-hosted endpoint). When omitted, the network is derived
+                                     from the active wallet env
   -q, --quiet                        Display less output
   -h, --help                         Print help
   -V, --version                      Print version
