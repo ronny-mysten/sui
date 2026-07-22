@@ -9,7 +9,11 @@ Commands:
   addresses                   Obtain the Addresses managed by the client
   balance                     List the coin balance of an address
   call                        Call Move function
-  chain-identifier            Query the chain identifier from the rpc endpoint
+  chain-identifier            Query the chain identifier from the rpc endpoint. Prints it in
+                                  both encodings: the full Base58-encoded genesis checkpoint digest
+                                  (as returned by the gRPC and GraphQL APIs) and the legacy hex
+                                  short form. Either can be used as a chain ID in the
+                                  `[environments]` section of `Move.toml`
   dynamic-field               Query a dynamic field by its address
   envs                        List all Sui environments
   execute-signed-tx           Execute a Signed Transaction. This is useful when the user prefers
