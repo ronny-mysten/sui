@@ -65,8 +65,9 @@ Commands:
                                   is specified, only the amount is transferred; otherwise the entire
                                   object is transferred
   verify-bytecode-meter       Run the bytecode verifier on the package
-  verify-source               Verify local Move packages against on-chain packages, and
-                                  optionally their dependencies
+  verify-source               Verify that a local Move source package compiles to an on-chain
+                                  package's bytecode and linkage, rebuilding it with the toolchain
+                                  version it was published with
   remove-address              Remove an existing address by its alias or hexadecimal string
   replay-transaction          Replay a given transaction to view transaction effects
                                   (deprecated; use `sui replay` instead)
